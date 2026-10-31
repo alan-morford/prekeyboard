@@ -73,4 +73,49 @@ class ComposerTest {
         type("teh"); composer.beforeEnter(on)
         assertEquals("the", text.toString())
     }
+
+    @Test fun swipedWordsSpaceThemselvesAndBackspaceTakesTheWord() {
+        type("Hello")
+        composer.swipe("world"); composer.swipe("again")
+        assertEquals("Hello world again", text.toString())
+        assertEquals(true, composer.backspace())
+        assertEquals("Hello world", text.toString())
+        type("!")
+        assertEquals("Hello world!", text.toString())
+        // At the start of the text, or after a space or an opening bracket: no space added.
+        text.setLength(0); composer.reset()
+        composer.swipe("one"); type(" ("); composer.swipe("two")
+        assertEquals("one (two", text.toString())
+    }
+
+    @Test fun pickingFromTheBar() {
+        type("I like teh")
+        assertEquals("teh", composer.currentWord())
+        composer.pick("the", learn = false)
+        assertEquals("I like the ", text.toString())
+        composer.type(" ", on)                     // a quick space after a pick: the period
+        assertEquals("I like the. ", text.toString())
+
+        // After a swipe, a pick swaps the swiped word.
+        text.setLength(0); composer.reset()
+        composer.swipe("in"); composer.pick("on", learn = false)
+        assertEquals("on", text.toString())
+        assertEquals("on", composer.swiped)
+
+        // The word as typed, picked over its correction, is learned and kept from then on.
+        text.setLength(0); composer.reset()
+        type("Zorp"); composer.pick("Zorp", learn = true)
+        assertEquals(listOf("Zorp"), learned)
+        type("zorp ")
+        assertEquals("Zorp zorp ", text.toString())
+    }
+
+    @Test fun currentWordOnlyAtAWordsEnd() {
+        type("say hel")
+        assertEquals("hel", composer.currentWord())
+        type(" ")
+        assertEquals("", composer.currentWord())
+        type("mail@exa")
+        assertEquals("", composer.currentWord())
+    }
 }

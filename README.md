@@ -16,11 +16,33 @@ It began as the "Pre (Orange)" and "Pre (White)" layouts of
 webOS keyboard to Android comes from [Lunacy](https://github.com/webOSArchive/Lunacy)'s
 TouchPad keyboard. It shares no code with either.
 
+## Features
+
+- The Pre's layout key for key: four rows in matching columns, the orange key, Sym, and every
+  key's alternate printed where the Pre printed it
+- Two styles, **Orange** and **White**: hold the orange key to switch on the fly
+- **Swipe to type**, with the next likeliest guesses one tap away
+- **Suggestion bar**: three words above the keys, the likeliest in the middle in orange
+- **Autocorrect** for typos and for contractions (`dont` → `don't`), undone by the next
+  backspace, and learning the words you keep
+- **Double-space period**
+- **Emoji**: every emoji your phone can draw, by category, with your recent ones first
+- **Accents** on a long press of a letter
+- **Cursor control**: hold the space bar and slide; with shift on, it selects
+- The **globe** asks which keyboard to use
+- Shift lights orange whenever the next letter will be a capital
+- Small, Medium and Large heights
+- Every setting takes effect at once, with the keyboard still on screen
+- Built for Android 15, runs on Android 5.0 and later
+
+![Swipe to type, with the suggestion bar](docs/swipe.png)
+
 ## Typing on it
 
 - **Orange key**: tap, and the next key types its printed alternate (orange + E = 1). Double tap
-  to lock it on; tap again to let go. **Shift** works the same way. Hold the orange key to
-  switch between the Orange and White styles.
+  to lock it on; tap again to let go. **Shift** works the same way, and lights orange while
+  the next letter will be a capital. Hold the orange key to switch between the Orange and White
+  styles.
 - **Sym** opens the digits and symbols. On that page, the **globe** asks which keyboard to use
   and the **smiley** opens the emoji (hold it for the text emoticons, `:-)` and friends).
 - **Emoji**: every emoji your phone can draw, by category, with your recent ones first.
@@ -29,6 +51,10 @@ TouchPad keyboard. It shares no code with either.
 - **Hold the space bar** and slide: the cursor follows your finger, left and right a character
   at a time, up and down a line at a time. With shift on, it selects as it goes.
 - **Hold backspace** and it repeats, then starts taking whole words.
+- **Swipe** (when switched on): slide across the letters and lift at the end of the word. The
+  word goes in, spaced from the one before; the suggestion bar offers the next likeliest
+  guesses, and tapping one swaps it in. Backspace straight after a swipe takes the whole word.
+  Taps still type letters as usual.
 
 ## Settings
 
@@ -43,10 +69,19 @@ the keyboard on screen.
   straight after a correction puts back what you typed, and the keyboard remembers that word
   from then on. It stays out of passwords, email addresses and web addresses.
 - **Double-space period** (on by default): two quick spaces after a word type `. `.
+- **Suggestion bar** (off by default): three words above the keys as you type. The middle one,
+  in orange, is the likeliest - what the space bar would make of your word. On the left is the
+  word as you typed it, when that differs; tap it to keep it, and it is never corrected again.
+- **Swipe to type** (off by default): see above. It brings the suggestion bar with it.
+
+Swipe matching follows the location channel of Kristensson and Zhai's SHARK² (2004): the
+finger's path is compared, point for point, with each candidate word's path through its keys,
+and the distance is weighed against how common the word is.
 
 ## Installing
 
-Pre Keyboard isn't on an app store. Build it (below), then:
+Pre Keyboard isn't on an app store. Download the APK from
+[Releases](https://github.com/alan-morford/prekeyboard/releases), or build it (below), then:
 
 1. Install the APK (allow your browser or file manager to install apps when Android asks).
 2. Open **Pre Keyboard** and follow its two steps: switch it on in Android's keyboard settings,

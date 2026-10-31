@@ -6,6 +6,7 @@ import android.content.res.Configuration
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
@@ -42,6 +43,10 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         fun onToggleStyle()
         /** Whether the field wants a capital here (the start of a sentence, say). */
         fun wantsCaps(): Boolean
+        /** A swipe across the letters, in view pixels; [caps] is [CAPS_NONE], [CAPS_FIRST] or [CAPS_ALL]. */
+        fun onSwipe(xs: FloatArray, ys: FloatArray, caps: Int) {}
+        /** The [i]th word in the suggestion bar was tapped: 0 left, 1 middle, 2 right. */
+        fun onPick(i: Int) {}
     }
 
     var settings = Settings.read(context)
@@ -51,9 +56,9 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
     private val handler = Handler(Looper.getMainLooper())
     private val style get() = settings.style
 
-    /** New settings, applied in place: a new style repaints, a new height re-lays the keyboard. */
+    /** New settings, applied in place: a new style repaints, a new height (or bar) re-lays the keyboard. */
     fun apply(s: Settings) {
-        val resize = s.height != settings.height
+        val resize = s.height != settings.height || s.showsBar != settings.showsBar
         settings = s
         if (resize) { painter.clear(); requestLayout() }
         invalidate()
@@ -71,14 +76,16 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
     /** Room under the keys: a little of our own, plus a navigation bar drawn over us, if any. */
     private var navInset = 0
     private val bottomPad get() = 2 * dp + navInset
-    private val keysHeight get() = rowHeight * 4 + topBorder + bottomPad
+    /** The suggestion bar, above the keys, when it is switched on. */
+    private val barHeight get() = if (settings.showsBar) Math.round(rowHeight * 0.72f).toFloat() else 0f
+    private val keysHeight get() = barHeight + rowHeight * 4 + topBorder + bottomPad
 
     private val cellH get() = rowHeight * 0.85f
     private val popupPad get() = 5 * dp
     /** Room above the keys for the tallest popup: two lines of accents. */
     val headroom: Int get() = Math.ceil((2 * cellH + 2 * popupPad).toDouble()).toInt()
 
-    /** Where the keyboard proper starts: everything above is the popups' room. */
+    /** Where the keyboard proper (the bar, if shown, then the keys) starts: above is the popups' room. */
     fun keyboardTop(): Int = height - keysHeight.toInt()
 
     override fun onMeasure(widthSpec: Int, heightSpec: Int) {
@@ -133,7 +140,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
     override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) = layoutKeys()
 
     private fun rowRect(i: Int): RectF {
-        val top = keyboardTop() + topBorder + i * rowHeight
+        val top = keyboardTop() + barHeight + topBorder + i * rowHeight
         return RectF(0f, Math.round(top).toFloat(), width.toFloat(), Math.round(top + rowHeight).toFloat())
     }
 
@@ -169,7 +176,8 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
 
     override fun onDraw(c: Canvas) {
         val top = keyboardTop().toFloat()
-        painter.deck(c, RectF(0f, top, width.toFloat(), height.toFloat()))
+        painter.deck(c, RectF(0f, top + barHeight, width.toFloat(), height.toFloat()))
+        if (settings.showsBar) drawBar(c, RectF(0f, top, width.toFloat(), top + barHeight))
         if (page == Page.EMOJI) {
             emoji.draw(c, painter, style, emoji.pressed == EmojiPanel.BACK, emoji.pressed == EmojiPanel.ABC) { cv, s, r ->
                 functionLabel(cv, s, r)
@@ -177,6 +185,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
             return
         }
         for (z in zones) if (z.slot.drawn) drawKey(c, z)
+        drawTrail(c)
         drawPreview(c)
         drawExtended(c)
     }
@@ -403,6 +412,104 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         while (cursorY - y >= stepY) { cursorY -= stepY; host.onCursor(0, -1, select) }
     }
 
+    // --- The suggestion bar -----------------------------------------------------------------
+
+    private var words = listOf("", "", "")
+    private var barPressed = -1
+
+    /** Three words, left to right; the middle one is the likeliest. "" leaves a place empty. */
+    fun setSuggestions(w: List<String>) {
+        val next = List(3) { w.getOrNull(it) ?: "" }
+        if (next != words) { words = next; invalidate() }
+    }
+
+    private val barPaint = Paint()
+
+    private fun drawBar(c: Canvas, r: RectF) {
+        barPaint.color = BAR
+        c.drawRect(r, barPaint)
+        val cw = r.width() / 3
+        // One baseline for every word, from the font rather than each word's ink, so a word
+        // doesn't jump when a letter with a descender ("hop") comes along.
+        val size = r.height() * 0.46f
+        text.textSize = size
+        val fm = text.fontMetrics
+        val baseline = r.centerY() - (fm.ascent + fm.descent) / 2
+        for (i in 0..2) {
+            val cell = RectF(r.left + i * cw, r.top, r.left + (i + 1) * cw, r.bottom)
+            if (i == barPressed && words[i].isNotEmpty()) { barPaint.color = BAR_PRESSED; c.drawRect(cell, barPaint) }
+            if (i > 0) {
+                barPaint.color = BAR_RULE
+                c.drawRect(cell.left, r.top + r.height() * 0.25f, cell.left + Math.max(1f, dp), r.bottom - r.height() * 0.25f, barPaint)
+            }
+            val w = words[i]
+            if (w.isEmpty()) continue
+            // The likeliest word, in the middle, in the Pre's orange in either style.
+            text.color = if (i == 1) Style.ORANGE.accent else Color.WHITE
+            text.textSize = fitted(w, size, cw - 12 * dp)
+            c.drawText(w, cell.centerX() - text.measureText(w) / 2, baseline, text)
+        }
+    }
+
+    private fun barCell(x: Float, y: Float): Int {
+        val top = keyboardTop()
+        if (!settings.showsBar || y < top || y >= top + barHeight) return -1
+        return (x / (width / 3f)).toInt().coerceIn(0, 2)
+    }
+
+    // --- Swipe to type ----------------------------------------------------------------------
+
+    /** Swiping may happen here: switched on, and a field for words (not a password, say). */
+    var wordsAllowed = true
+    private var swipeX = FloatArray(256)
+    private var swipeY = FloatArray(256)
+    private var swipeN = 0
+    /** The touch started on a letter and may turn into a swipe... */
+    private var swipeMaybe = false
+    /** ...and it has. */
+    private var swiping = false
+
+    private fun canSwipe(z: Zone): Boolean = settings.swipe && wordsAllowed && page == Page.LETTERS &&
+        alt == Alt.OFF && z.key.kind == Kind.CHAR && z.key.text.length == 1 && z.key.text[0] in 'a'..'z'
+
+    private fun addSwipePoint(x: Float, y: Float) {
+        if (swipeN == swipeX.size) { swipeX = swipeX.copyOf(swipeN * 2); swipeY = swipeY.copyOf(swipeN * 2) }
+        swipeX[swipeN] = x; swipeY[swipeN] = y; swipeN++
+    }
+
+    /** Where the letters are, for the swipe decoder. */
+    fun swipeLayout(): SwipeDecoder.Layout? {
+        val x = FloatArray(26); val y = FloatArray(26)
+        var found = 0
+        var keyW = 0f
+        for (z in zones) {
+            val t = z.key.text
+            if (z.key.kind != Kind.CHAR || t.length != 1 || t[0] !in 'a'..'z') continue
+            x[t[0] - 'a'] = z.rect.centerX(); y[t[0] - 'a'] = z.rect.centerY()
+            if (t == "q") keyW = z.rect.width()
+            found++
+        }
+        return if (found == 26 && keyW > 0) SwipeDecoder.Layout(x, y, keyW, rowHeight) else null
+    }
+
+    private val trailPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
+    private val trail = Path()
+
+    private fun drawTrail(c: Canvas) {
+        if (!swiping || swipeN < 2) return
+        trail.rewind()
+        trail.moveTo(swipeX[0], swipeY[0])
+        for (i in 1 until swipeN) trail.lineTo(swipeX[i], swipeY[i])
+        trailPaint.strokeWidth = 6 * dp
+        trailPaint.color = if (style == Style.WHITE) Color.WHITE else style.accent
+        trailPaint.alpha = 200
+        c.drawPath(trail, trailPaint)
+    }
+
     // --- Touch ------------------------------------------------------------------------------
 
     private fun zoneAt(x: Float, y: Float): Zone? {
@@ -472,15 +579,48 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
             return emoji.onTouch(e)
         }
         val x = e.x; val y = e.y
+        // A touch that starts in the suggestion bar stays there.
+        if (e.actionMasked == MotionEvent.ACTION_DOWN) barPressed = -1
+        if (barPressed >= 0 || (e.actionMasked == MotionEvent.ACTION_DOWN && barCell(x, y) >= 0)) {
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    barPressed = barCell(x, y)
+                    if (words[barPressed].isNotEmpty()) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                }
+                MotionEvent.ACTION_UP -> {
+                    val i = barPressed
+                    barPressed = -1
+                    if (barCell(x, y) == i && words[i].isNotEmpty()) host.onPick(i)
+                }
+                MotionEvent.ACTION_CANCEL -> barPressed = -1
+            }
+            invalidate()
+            return true
+        }
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 val z = zoneAt(x, y) ?: return false
                 downX = x; downY = y
                 performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                 press(z)
+                swiping = false
+                swipeMaybe = canSwipe(z)
+                swipeN = 0
+                if (swipeMaybe) addSwipePoint(x, y)
             }
             MotionEvent.ACTION_MOVE -> {
                 if (cursorMode) { moveCursor(x, y); return true }
+                if (swipeMaybe && extended == null && !held) {
+                    for (h in 0 until e.historySize) addSwipePoint(e.getHistoricalX(h), e.getHistoricalY(h))
+                    addSwipePoint(x, y)
+                    if (!swiping && Math.hypot((x - downX).toDouble(), (y - downY).toDouble()) > swipeStart()) {
+                        // Off the first key and on its way: a swipe, not a tap.
+                        swiping = true
+                        handler.removeCallbacks(hold)
+                        pressed = null; preview = null
+                    }
+                    if (swiping) { invalidate(); return true }
+                }
                 if (extended != null) {
                     val i = extendedAt(x, y)
                     if (i != extendedIndex) { extendedIndex = i; invalidate() }
@@ -493,7 +633,16 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 handler.removeCallbacks(hold); handler.removeCallbacks(repeat)
-                if (e.actionMasked == MotionEvent.ACTION_UP) commit()
+                if (swiping) {
+                    if (e.actionMasked == MotionEvent.ACTION_UP) {
+                        addSwipePoint(x, y)
+                        val caps = when (shift) { Shift.OFF -> CAPS_NONE; Shift.ONCE -> CAPS_FIRST; Shift.LOCK -> CAPS_ALL }
+                        host.onSwipe(swipeX.copyOf(swipeN), swipeY.copyOf(swipeN), caps)
+                        if (shift == Shift.ONCE) { shift = Shift.OFF; autoShift = false; lastShiftTap = NEVER }
+                    }
+                    pressed = null
+                } else if (e.actionMasked == MotionEvent.ACTION_UP) commit()
+                swiping = false; swipeMaybe = false; swipeN = 0
                 extended = null; extendedFrame = null
                 cursorMode = false; held = false
                 pressed = null; preview = null
@@ -567,6 +716,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         if (page != Page.LETTERS) show(Page.LETTERS)
         extended = null; extendedFrame = null; pressed = null; preview = null
         cursorMode = false; held = false
+        swiping = false; swipeMaybe = false; swipeN = 0; barPressed = -1
         handler.removeCallbacksAndMessages(null)
         updateCaps()
         invalidate()
@@ -578,7 +728,18 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         painter.clear()
     }
 
+    /** How far a finger goes from where it landed before a letter's touch becomes a swipe. */
+    private fun swipeStart() = width / 10f * 0.6f
+
     companion object {
+        const val CAPS_NONE = 0
+        const val CAPS_FIRST = 1
+        const val CAPS_ALL = 2
+
+        private val BAR = Color.rgb(36, 40, 43)
+        private val BAR_PRESSED = Color.rgb(64, 70, 75)
+        private val BAR_RULE = Color.rgb(86, 94, 99)
+
         // webOS's keyboard timings, from LunaCE's TabletKeyboard.cpp (Apache 2.0).
         private const val FIRST_REPEAT = 350L
         private const val LETTER_REPEAT = 120L

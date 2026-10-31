@@ -64,6 +64,14 @@ class SetupActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
             { Settings.read(this).autocorrect }) { v -> Settings.update(this) { it.copy(autocorrect = v) } })
         column.addView(toggle("Double-space period", "Two quick spaces after a word type \". \".",
             { Settings.read(this).doubleSpacePeriod }) { v -> Settings.update(this) { it.copy(doubleSpacePeriod = v) } })
+        column.addView(toggle("Suggestion bar", "Three words above the keys as you type, the likeliest " +
+            "in the middle in orange. Tap one to use it. Always on with swipe to type.",
+            { Settings.read(this).suggestions }, forcedOn = { Settings.read(this).swipe })
+            { v -> Settings.update(this) { it.copy(suggestions = v) } })
+        column.addView(toggle("Swipe to type", "Slide across the letters and lift at the end of the word. " +
+            "Backspace straight after takes the whole word. Shows the suggestion bar too, with the " +
+            "other guesses.",
+            { Settings.read(this).swipe }) { v -> Settings.update(this) { it.copy(swipe = v) } })
 
         column.addView(EditText(this).apply {
             hint = "Try it here"
@@ -139,7 +147,9 @@ class SetupActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
     }
 
     @Suppress("UseSwitchCompatOrMaterialCode")
-    private fun toggle(title: String, detail: String, current: () -> Boolean, set: (Boolean) -> Unit): View {
+    /** A switch with a line of explanation. While [forcedOn] holds, it shows on and greyed out. */
+    private fun toggle(title: String, detail: String, current: () -> Boolean,
+                       forcedOn: () -> Boolean = { false }, set: (Boolean) -> Unit): View {
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, unit / 2, 0, unit / 2) }
         val sw = Switch(this).apply {
             text = title
@@ -147,9 +157,17 @@ class SetupActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
             setTextColor(Color.WHITE)
         }
         val listener = CompoundButton.OnCheckedChangeListener { _, on -> set(on) }
+        val note = TextView(this).apply { text = detail; setTextColor(Color.rgb(0xb4, 0xb4, 0xb4)) }
         box.addView(sw)
-        box.addView(TextView(this).apply { text = detail; setTextColor(Color.rgb(0xb4, 0xb4, 0xb4)) })
-        val refresh = { sw.setOnCheckedChangeListener(null); sw.isChecked = current(); sw.setOnCheckedChangeListener(listener) }
+        box.addView(note)
+        val refresh = {
+            val forced = forcedOn()
+            sw.setOnCheckedChangeListener(null)
+            sw.isChecked = forced || current()
+            sw.isEnabled = !forced
+            box.alpha = if (forced) 0.45f else 1f
+            sw.setOnCheckedChangeListener(listener)
+        }
         refreshers += refresh
         refresh()
         return box

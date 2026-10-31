@@ -34,6 +34,8 @@ class KeyboardViewTest {
     private var caps = false
     private var picked = 0
     private val moves = StringBuilder()
+    private var swipes = 0
+    private val picks = ArrayList<Int>()
     private val host = object : KeyboardView.Host {
         override fun onText(text: String) { typed.append(text) }
         override fun onBackspace(word: Boolean) { if (typed.isNotEmpty()) typed.setLength(typed.length - 1) }
@@ -42,6 +44,8 @@ class KeyboardViewTest {
         override fun onCursor(dx: Int, dy: Int, select: Boolean) { moves.append(if (dx > 0) "R" else if (dx < 0) "L" else if (dy > 0) "D" else "U") }
         override fun onToggleStyle() { Settings.update(context) { it.copy(style = if (it.style == Style.ORANGE) Style.WHITE else Style.ORANGE) } }
         override fun wantsCaps() = caps
+        override fun onSwipe(xs: FloatArray, ys: FloatArray, caps: Int) { swipes++ }
+        override fun onPick(i: Int) { picks += i }
     }
     private lateinit var context: Context
 
@@ -239,5 +243,46 @@ class KeyboardViewTest {
         }
         assertEquals("RRRLL", moves.toString())
         assertEquals("", typed.toString())         // a held space types nothing
+    }
+
+    @Test fun suggestionBarAndSwipe() {
+        val v = keyboard()
+        val plain = v.measuredHeight
+        Settings.update(context) { it.copy(swipe = true) }
+        v.measure(View.MeasureSpec.makeMeasureSpec(v.width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+        v.layout(0, 0, v.measuredWidth, v.measuredHeight)
+        assertEquals(true, v.measuredHeight > plain)   // the bar came with swipe
+        v.setSuggestions(listOf("help", "hello", "hell"))   // as the service would after this swipe
+
+        // Swipe h-e-l-o: the trail, then the path handed over; nothing typed by the keys.
+        val k = v.swipeLayout()!!
+        val t = SystemClock.uptimeMillis()
+        val path = "helo".map { k.x[it - 'a'] to k.y[it - 'a'] }
+        touch(v, MotionEvent.ACTION_DOWN, path[0].first, path[0].second, t)
+        var time = t
+        for (i in 1 until path.size) for (s in 1..6) {
+            val (x0, y0) = path[i - 1]; val (x1, y1) = path[i]
+            time += 10
+            touch(v, MotionEvent.ACTION_MOVE, x0 + (x1 - x0) * s / 6, y0 + (y1 - y0) * s / 6, time)
+        }
+        shot(v, "orange-swipe")
+        touch(v, MotionEvent.ACTION_UP, path.last().first, path.last().second, time + 10)
+        assertEquals(1, swipes)
+        assertEquals("", typed.toString())
+
+        // The bar: tap the middle word, then the left.
+        val barY = v.keyboardTop() + 10f
+        for (i in listOf(1, 0)) {
+            val x = v.width * (i + 0.5f) / 3
+            touch(v, MotionEvent.ACTION_DOWN, x, barY, time + 100); touch(v, MotionEvent.ACTION_UP, x, barY, time + 130)
+        }
+        assertEquals(listOf(1, 0), picks)
+        shot(v, "orange-bar")
+
+        // A tap on a letter is still a tap.
+        val (qx, qy) = k.x['q' - 'a'] to k.y['q' - 'a']
+        touch(v, MotionEvent.ACTION_DOWN, qx, qy, time + 200); touch(v, MotionEvent.ACTION_UP, qx + 3, qy, time + 230)
+        assertEquals("q", typed.toString())
+        Settings.update(context) { it.copy(swipe = false) }
     }
 }

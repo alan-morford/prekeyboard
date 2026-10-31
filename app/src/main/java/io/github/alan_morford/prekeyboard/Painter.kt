@@ -118,7 +118,8 @@ class Painter(private val dp: Float) {
 
     enum class Icon { SHIFT, SHIFT_ON, SHIFT_LOCK, BACKSPACE, RETURN, GLOBE, EMOJI, CURSOR }
 
-    private val shiftLit = Color.rgb(120, 196, 255)
+    /** Shift, when the next letter (or every letter) will be a capital: the Pre's orange, in either style. */
+    private val shiftLit = Style.ORANGE.accent
 
     /** Draws an icon [size] px square, centred on ([cx], [cy]). */
     fun icon(c: Canvas, icon: Icon, cx: Float, cy: Float, size: Float) {

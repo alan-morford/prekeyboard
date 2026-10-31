@@ -12,7 +12,12 @@ data class Settings(
     val height: Height = Height.MEDIUM,
     val autocorrect: Boolean = true,
     val doubleSpacePeriod: Boolean = true,
+    val suggestions: Boolean = false,
+    val swipe: Boolean = false,
 ) {
+    /** Swiping needs the bar too: it is where the other guesses go. */
+    val showsBar get() = suggestions || swipe
+
     /** Row heights in dp. Medium is close to a Pre key's proportions on a modern phone. */
     enum class Height(val dp: Int, val label: String) { SMALL(46, "Small"), MEDIUM(54, "Medium"), LARGE(62, "Large") }
 
@@ -29,6 +34,8 @@ data class Settings(
                 height = runCatching { Height.valueOf(p.getString("height", null) ?: "") }.getOrDefault(d.height),
                 autocorrect = p.getBoolean("autocorrect", d.autocorrect),
                 doubleSpacePeriod = p.getBoolean("doubleSpacePeriod", d.doubleSpacePeriod),
+                suggestions = p.getBoolean("suggestions", d.suggestions),
+                swipe = p.getBoolean("swipe", d.swipe),
             )
         }
 
@@ -36,6 +43,7 @@ data class Settings(
             prefs(context).edit()
                 .putString("style", s.style.name).putString("height", s.height.name)
                 .putBoolean("autocorrect", s.autocorrect).putBoolean("doubleSpacePeriod", s.doubleSpacePeriod)
+                .putBoolean("suggestions", s.suggestions).putBoolean("swipe", s.swipe)
                 .apply()
         }
 

@@ -47,4 +47,13 @@ class CorrectorTest {
         local.learn("teh")
         assertNull(local.correct("teh"))
     }
+
+    @Test fun suggestions() {
+        assertEquals("the", c.suggestions("teh").first())       // what space would make of it
+        assertEquals("hello", c.suggestions("hello").first())   // a word is its own best
+        assertEquals(true, "keyboard" in c.suggestions("keyboa"))
+        assertEquals("Hello", c.suggestions("Hello").first())
+        assertEquals(3, c.suggestions("th").size)
+        assertEquals(emptyList<String>(), c.suggestions(""))
+    }
 }

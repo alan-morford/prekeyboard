@@ -39,7 +39,13 @@ class Corrector(lines: Sequence<String>) {
         }
     }
 
+    /** Every key, sorted, for finding the words a typed prefix begins. */
+    private val sorted: Array<String> = words.keys.toTypedArray().also { it.sort() }
+
     val size get() = words.size
+
+    /** Every word with its score, for the swipe decoder. */
+    fun entries(): Sequence<Pair<String, Int>> = words.values.asSequence().map { it.word to it.score }
 
     fun learn(word: String) { learned += word.lowercase() }
     fun learnAll(ws: Collection<String>) { for (w in ws) learn(w) }
@@ -67,32 +73,69 @@ class Corrector(lines: Sequence<String>) {
         return casedLike(typed, best).takeIf { it != typed }
     }
 
+    /**
+     * Words for the suggestion bar while [typed] is being typed, likeliest first: what
+     * autocorrect would make of it (or the word itself, when it is a word), then the commonest
+     * words it begins, then the nearest spellings.
+     */
+    fun suggestions(typed: String, max: Int = 3): List<String> {
+        if (typed.isEmpty() || typed.length > MAX_LENGTH || !typed[0].isLetter()) return emptyList()
+        val lower = typed.lowercase()
+        val out = LinkedHashSet<String>()
+        val fix = correct(typed)
+        when {
+            fix != null -> out += fix
+            lower in learned -> out += typed
+            else -> words[lower]?.let { out += casedLike(typed, it.word) }
+        }
+        for (w in completions(lower, 2)) out += casedLike(typed, w)
+        if (lower.length >= 2 && '\'' !in lower && typed.all { it.isLetter() })
+            for (w in nearest(lower, max)) out += casedLike(typed, w)
+        for (w in completions(lower, max + 2)) out += casedLike(typed, w)
+        return out.take(max)
+    }
+
+    /** The commonest words that start with [prefix] and are longer than it. */
+    private fun completions(prefix: String, max: Int): List<String> {
+        var lo = 0; var hi = sorted.size
+        while (lo < hi) { val mid = (lo + hi) ushr 1; if (sorted[mid] < prefix) lo = mid + 1 else hi = mid }
+        val found = ArrayList<Entry>()
+        var i = lo
+        var looked = 0
+        while (i < sorted.size && sorted[i].startsWith(prefix) && looked < COMPLETION_SCAN) {
+            if (sorted[i].length > prefix.length) words[sorted[i]]?.let { found += it }
+            i++; looked++
+        }
+        return found.sortedByDescending { it.score }.take(max).map { it.word }
+    }
+
     // --- Finding the nearest word ------------------------------------------------------------
 
-    private fun nearest(w: String): String? {
+    private fun nearest(w: String): String? = nearest(w, 1).firstOrNull()
+
+    private fun nearest(w: String, max: Int): List<String> {
         val one = HashMap<String, Float>()
         edits(w, 0f, one, full = true)
-        pick(one, maxCost = if (w.length <= 3) 0.6f else 1.3f, minScore = if (w.length <= 3) 12 else 5)?.let { return it }
-        if (w.length < 5) return null
+        pick(one, maxCost = if (w.length <= 3) 0.6f else 1.3f, minScore = if (w.length <= 3) 12 else 5, max)
+            .let { if (it.isNotEmpty()) return it }
+        if (w.length < 5) return emptyList()
         // Two slips: grow every one-slip spelling once more, with a narrower set of edits so a
         // long word stays quick even on an old phone.
         val two = HashMap<String, Float>()
         for ((s, c) in one) edits(s, c, two, full = false)
-        return pick(two, maxCost = 1.9f, minScore = 9)
+        return pick(two, maxCost = 1.9f, minScore = 9, max)
     }
 
-    /** The best known word among [cands]: common, and cheap to reach. */
-    private fun pick(cands: Map<String, Float>, maxCost: Float, minScore: Int): String? {
-        var best: Entry? = null
-        var bestValue = Float.NEGATIVE_INFINITY
+    /** The best known words among [cands]: common, and cheap to reach. Best first. */
+    private fun pick(cands: Map<String, Float>, maxCost: Float, minScore: Int, max: Int): List<String> {
+        val found = ArrayList<Pair<Entry, Float>>()
         for ((s, cost) in cands) {
             if (cost > maxCost) continue
             val e = words[s] ?: continue
             if (e.score < minScore) continue
-            val v = e.score - COST_WEIGHT * cost
-            if (v > bestValue) { bestValue = v; best = e }
+            found += e to (e.score - COST_WEIGHT * cost)
         }
-        return best?.word
+        return found.sortedByDescending { it.second }.take(max).map { it.first.word }
     }
 
     /** Every spelling one slip away from [w], with what the slip costs, into [out]. */
@@ -142,6 +185,8 @@ class Corrector(lines: Sequence<String>) {
 
     companion object {
         private const val MAX_LENGTH = 24
+        /** A one-letter prefix begins thousands of words: look through this many at most. */
+        private const val COMPLETION_SCAN = 15000
         /** How many log2-frequency points one unit of edit cost is worth. */
         private const val COST_WEIGHT = 4f
         private const val ALPHABET = "abcdefghijklmnopqrstuvwxyz"
