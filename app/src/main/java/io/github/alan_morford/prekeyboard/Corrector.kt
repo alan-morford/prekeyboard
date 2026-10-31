@@ -1,0 +1,187 @@
+package io.github.alan_morford.prekeyboard
+
+/**
+ * Autocorrect: turns a finished word into the word that was probably meant, or leaves it be.
+ *
+ * - Contractions typed without their apostrophe get it back: "dont" -> "don't", "im" -> "I'm".
+ *   Only the ones whose bare form is not itself an everyday word: "well", "were", "its",
+ *   "ill", "hell", "shell", "lets" and "wed" are left alone.
+ * - A lone "i", and a proper noun typed in lower case, get their capital.
+ * - An unknown word becomes the dictionary word closest to it, where "close" is an edit
+ *   distance that knows the Pre's keyboard: hitting the key next door, swapping two letters
+ *   or doubling one costs less than any other slip. Distance is traded against how common the
+ *   word is, so "teh" becomes "the" rather than "ten".
+ *
+ * Plain Kotlin with no Android in it, so the tests run it directly.
+ */
+class Corrector(lines: Sequence<String>) {
+
+    private class Entry(val word: String, val score: Int)
+
+    /** Keyed by lower case; the value keeps the word's own case ("I", "London", "don't"). */
+    private val words = HashMap<String, Entry>(131072)
+
+    /** Words the owner has kept by undoing a correction: never corrected again. */
+    private val learned = HashSet<String>()
+
+    init {
+        for (line in lines) {
+            if (line.isEmpty() || line[0] == '#') continue
+            val tab = line.indexOf('\t')
+            if (tab <= 0) continue
+            val w = line.substring(0, tab)
+            val score = line.substring(tab + 1).trim().toIntOrNull() ?: continue
+            val key = w.lowercase()
+            val had = words[key]
+            // Prefer the lower-case spelling when a word comes both ways ("bill" and "Bill").
+            if (had == null || (w == key && had.word != key) || (had.word != key && score > had.score))
+                words[key] = Entry(w, score)
+        }
+    }
+
+    val size get() = words.size
+
+    fun learn(word: String) { learned += word.lowercase() }
+    fun learnAll(ws: Collection<String>) { for (w in ws) learn(w) }
+
+    fun isKnown(word: String): Boolean = word.lowercase().let { it in words || it in learned }
+
+    /** The correction for [typed], or null to leave it as typed. */
+    fun correct(typed: String): String? {
+        if (typed.isEmpty() || typed.length > MAX_LENGTH) return null
+        if (!typed.all { it.isLetter() || it == '\'' } || !typed[0].isLetter()) return null
+        val lower = typed.lowercase()
+        if (lower in learned) return null
+        // A word typed all in capitals, beyond one letter, is meant that way (NASA, OK).
+        if (typed.length > 1 && typed.all { it.isUpperCase() || it == '\'' }) return null
+
+        CONTRACTIONS[lower]?.let { return casedLike(typed, it).takeIf { r -> r != typed } }
+
+        words[lower]?.let { e ->
+            // Known. Only its capital can be wrong: "i", or "london" for "London".
+            return if (typed == lower && e.word != lower) e.word else null
+        }
+        if (lower.length < 2 || '\'' in lower) return null
+
+        val best = nearest(lower) ?: return null
+        return casedLike(typed, best).takeIf { it != typed }
+    }
+
+    // --- Finding the nearest word ------------------------------------------------------------
+
+    private fun nearest(w: String): String? {
+        val one = HashMap<String, Float>()
+        edits(w, 0f, one, full = true)
+        pick(one, maxCost = if (w.length <= 3) 0.6f else 1.3f, minScore = if (w.length <= 3) 12 else 5)?.let { return it }
+        if (w.length < 5) return null
+        // Two slips: grow every one-slip spelling once more, with a narrower set of edits so a
+        // long word stays quick even on an old phone.
+        val two = HashMap<String, Float>()
+        for ((s, c) in one) edits(s, c, two, full = false)
+        return pick(two, maxCost = 1.9f, minScore = 9)
+    }
+
+    /** The best known word among [cands]: common, and cheap to reach. */
+    private fun pick(cands: Map<String, Float>, maxCost: Float, minScore: Int): String? {
+        var best: Entry? = null
+        var bestValue = Float.NEGATIVE_INFINITY
+        for ((s, cost) in cands) {
+            if (cost > maxCost) continue
+            val e = words[s] ?: continue
+            if (e.score < minScore) continue
+            val v = e.score - COST_WEIGHT * cost
+            if (v > bestValue) { bestValue = v; best = e }
+        }
+        return best?.word
+    }
+
+    /** Every spelling one slip away from [w], with what the slip costs, into [out]. */
+    private fun edits(w: String, base: Float, out: HashMap<String, Float>, full: Boolean) {
+        fun add(s: String, c: Float) {
+            val total = base + c
+            val had = out[s]
+            if (had == null || total < had) out[s] = total
+        }
+        val n = w.length
+        val sb = StringBuilder(n + 1)
+        for (i in 0 until n) {
+            // An extra letter: cheaper when it doubles its neighbour.
+            sb.setLength(0); sb.append(w, 0, i).append(w, i + 1, n)
+            add(sb.toString(), if (i > 0 && w[i] == w[i - 1]) 0.5f else if (adjacentToNeighbour(w, i)) 0.7f else 1f)
+            // Two letters swapped.
+            if (i < n - 1 && w[i] != w[i + 1]) {
+                sb.setLength(0); sb.append(w, 0, i).append(w[i + 1]).append(w[i]).append(w, i + 2, n)
+                add(sb.toString(), 0.6f)
+            }
+            // The wrong key.
+            for (c in ALPHABET) {
+                if (c == w[i]) continue
+                val cost = when {
+                    adjacent(w[i], c) -> 0.6f
+                    w[i] in VOWELS && c in VOWELS -> 0.9f
+                    else -> if (full) 1.3f else continue
+                }
+                sb.setLength(0); sb.append(w, 0, i).append(c).append(w, i + 1, n)
+                add(sb.toString(), cost)
+            }
+        }
+        // A missed letter.
+        for (i in 0..n) {
+            for (c in ALPHABET) {
+                val doubling = (i > 0 && w[i - 1] == c) || (i < n && w[i] == c)
+                if (!full && !doubling && c !in VOWELS &&
+                    !(i > 0 && adjacent(w[i - 1], c)) && !(i < n && adjacent(w[i], c))) continue
+                sb.setLength(0); sb.append(w, 0, i).append(c).append(w, i, n)
+                add(sb.toString(), if (doubling) 0.5f else 1f)
+            }
+        }
+    }
+
+    private fun adjacentToNeighbour(w: String, i: Int) =
+        (i > 0 && adjacent(w[i], w[i - 1])) || (i < w.length - 1 && adjacent(w[i], w[i + 1]))
+
+    companion object {
+        private const val MAX_LENGTH = 24
+        /** How many log2-frequency points one unit of edit cost is worth. */
+        private const val COST_WEIGHT = 4f
+        private const val ALPHABET = "abcdefghijklmnopqrstuvwxyz"
+        private const val VOWELS = "aeiouy"
+
+        /**
+         * Key positions on the Pre, whose rows sit in matching columns: A is under Q, and Z
+         * (after the orange key) under S. Neighbours are the keys around a key, diagonals too.
+         */
+        private val position: Map<Char, Pair<Int, Int>> = HashMap<Char, Pair<Int, Int>>().apply {
+            "qwertyuiop".forEachIndexed { i, c -> put(c, i to 0) }
+            "asdfghjkl".forEachIndexed { i, c -> put(c, i to 1) }
+            "zxcvbnm".forEachIndexed { i, c -> put(c, i + 1 to 2) }
+        }
+
+        fun adjacent(a: Char, b: Char): Boolean {
+            val p = position[a] ?: return false
+            val q = position[b] ?: return false
+            return Math.abs(p.first - q.first) <= 1 && Math.abs(p.second - q.second) <= 1
+        }
+
+        /** [word] with the capitals of [typed]: "Teh" -> "The". A word's own capitals stay. */
+        fun casedLike(typed: String, word: String): String =
+            if (typed[0].isUpperCase() && word[0].isLowerCase()) word.replaceFirstChar { it.uppercaseChar() } else word
+
+        val CONTRACTIONS: Map<String, String> = mapOf(
+            "dont" to "don't", "cant" to "can't", "wont" to "won't", "isnt" to "isn't",
+            "arent" to "aren't", "wasnt" to "wasn't", "werent" to "weren't", "hasnt" to "hasn't",
+            "havent" to "haven't", "hadnt" to "hadn't", "doesnt" to "doesn't", "didnt" to "didn't",
+            "couldnt" to "couldn't", "shouldnt" to "shouldn't", "wouldnt" to "wouldn't",
+            "mustnt" to "mustn't", "neednt" to "needn't", "aint" to "ain't",
+            "im" to "I'm", "ive" to "I've", "id" to "I'd",
+            "youre" to "you're", "youve" to "you've", "youll" to "you'll", "youd" to "you'd",
+            "theyre" to "they're", "theyve" to "they've", "theyll" to "they'll", "theyd" to "they'd",
+            "weve" to "we've", "hes" to "he's", "shes" to "she's",
+            "thats" to "that's", "whats" to "what's", "wheres" to "where's", "whos" to "who's",
+            "hows" to "how's", "theres" to "there's", "heres" to "here's", "itll" to "it'll",
+            "thatll" to "that'll", "wouldve" to "would've", "couldve" to "could've",
+            "shouldve" to "should've", "mightve" to "might've", "mustve" to "must've",
+            "yall" to "y'all", "oclock" to "o'clock", "whatre" to "what're", "whove" to "who've",
+        )
+    }
+}
