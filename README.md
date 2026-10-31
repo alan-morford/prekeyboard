@@ -21,7 +21,8 @@ TouchPad keyboard. It shares no code with either.
 - The Pre's layout key for key: four rows in matching columns, the orange key, Sym, and every
   key's alternate printed where the Pre printed it
 - Two styles, **Orange** and **White**: hold the orange key to switch on the fly
-- **Swipe to type**, with the next likeliest guesses one tap away
+- **Swipe to type**, with the word you would get shown as you swipe, and the next likeliest
+  guesses one tap away
 - **Suggestion bar**: three words above the keys, the likeliest in the middle in orange
 - **Autocorrect** for typos and for contractions (`dont` → `don't`), undone by the next
   backspace, and learning the words you keep
@@ -52,7 +53,8 @@ TouchPad keyboard. It shares no code with either.
   at a time, up and down a line at a time. With shift on, it selects as it goes.
 - **Hold backspace** and it repeats, then starts taking whole words.
 - **Swipe** (when switched on): slide across the letters and lift at the end of the word. The
-  word goes in, spaced from the one before; the suggestion bar offers the next likeliest
+  word goes in, spaced from the one before. While you swipe, the bar shows the word you would
+  get if you lifted now, in orange; after, it offers the next likeliest
   guesses, and tapping one swaps it in. Backspace straight after a swipe takes the whole word.
   Taps still type letters as usual.
 

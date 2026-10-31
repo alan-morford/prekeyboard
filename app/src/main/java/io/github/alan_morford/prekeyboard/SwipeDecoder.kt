@@ -11,7 +11,8 @@ package io.github.alan_morford.prekeyboard
  * its last, be about as long as the word's path, and pass near every letter in order.
  *
  * Distances are in keys: across in key widths, down in row heights. Plain Kotlin, so the
- * tests run it directly.
+ * tests run it directly. Safe to use from two threads: the live guesses are worked out off
+ * the main thread while a learned word may be added on it.
  */
 class SwipeDecoder(entries: Sequence<Pair<String, Int>>) {
 
@@ -26,7 +27,7 @@ class SwipeDecoder(entries: Sequence<Pair<String, Int>>) {
     init { for ((w, s) in entries) add(w, s) }
 
     /** A word to offer, with its log2 frequency score (see the dictionary). */
-    fun add(word: String, score: Int) {
+    @Synchronized fun add(word: String, score: Int) {
         if (score < MIN_SCORE) return
         val plain = word.lowercase().filter { it != '\'' }
         if (plain.length < 2 || plain.any { it !in 'a'..'z' }) return
@@ -41,7 +42,7 @@ class SwipeDecoder(entries: Sequence<Pair<String, Int>>) {
     }
 
     /** The likeliest words for the path ([px], [py] in pixels), best first; empty for a tap. */
-    fun decode(px: FloatArray, py: FloatArray, layout: Layout, max: Int = 4): List<String> {
+    @Synchronized fun decode(px: FloatArray, py: FloatArray, layout: Layout, max: Int = 4): List<String> {
         val n = px.size
         if (n < 2) return emptyList()
         // Into key units.

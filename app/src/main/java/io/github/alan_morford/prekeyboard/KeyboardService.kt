@@ -3,6 +3,7 @@ package io.github.alan_morford.prekeyboard
 import android.content.SharedPreferences
 import android.inputmethodservice.InputMethodService
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
@@ -62,6 +63,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
 
     override fun onDestroy() {
         Settings.prefs(this).unregisterOnSharedPreferenceChangeListener(this)
+        live.quitSafely()
         super.onDestroy()
     }
 
@@ -168,22 +170,48 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         refreshBar()
     }
 
+    /**
+     * Guesses while the finger is still moving: the word it would be if lifted now, in the
+     * middle, between the next two. Worked out on a thread of its own so the trail never
+     * stutters; a newer piece of the swipe, or the swipe's end, makes an older one moot.
+     */
+    private val live = HandlerThread("swipe").apply { start() }
+    private val liveHandler = Handler(live.looper)
+    @Volatile private var liveGeneration = 0
+
+    override fun onSwipeProgress(xs: FloatArray, ys: FloatArray, caps: Int) {
+        val d = decoder ?: return
+        val layout = view?.swipeLayout() ?: return
+        val gen = ++liveGeneration
+        liveHandler.removeCallbacksAndMessages(null)
+        liveHandler.post {
+            if (gen != liveGeneration) return@post
+            val found = d.decode(xs, ys, layout).map { cased(it, caps) }
+            main.post {
+                if (gen != liveGeneration || found.isEmpty()) return@post
+                view?.setSuggestions(listOf(found.getOrElse(1) { "" }, found[0], found.getOrElse(2) { "" }))
+            }
+        }
+    }
+
     override fun onSwipe(xs: FloatArray, ys: FloatArray, caps: Int) {
+        liveGeneration++
+        liveHandler.removeCallbacksAndMessages(null)
         val d = decoder ?: return
         val layout = view?.swipeLayout() ?: return
         val start = SystemClock.uptimeMillis()
         val found = d.decode(xs, ys, layout)
         Log.d(TAG, "swipe: ${xs.size} points, ${SystemClock.uptimeMillis() - start} ms, $found")
-        if (found.isEmpty()) return
-        swipeGuesses = found.map {
-            when (caps) {
-                KeyboardView.CAPS_ALL -> it.uppercase()
-                KeyboardView.CAPS_FIRST -> it.replaceFirstChar { c -> c.uppercaseChar() }
-                else -> it
-            }
-        }
+        if (found.isEmpty()) { refreshBar(); return }
+        swipeGuesses = found.map { cased(it, caps) }
         composer.swipe(swipeGuesses[0])
         refreshBar()
+    }
+
+    private fun cased(word: String, caps: Int) = when (caps) {
+        KeyboardView.CAPS_ALL -> word.uppercase()
+        KeyboardView.CAPS_FIRST -> word.replaceFirstChar { c -> c.uppercaseChar() }
+        else -> word
     }
 
     // --- What the keyboard reports ----------------------------------------------------------

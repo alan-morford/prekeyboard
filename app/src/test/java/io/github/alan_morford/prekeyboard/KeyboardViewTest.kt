@@ -35,6 +35,7 @@ class KeyboardViewTest {
     private var picked = 0
     private val moves = StringBuilder()
     private var swipes = 0
+    private var progress = 0
     private val picks = ArrayList<Int>()
     private val host = object : KeyboardView.Host {
         override fun onText(text: String) { typed.append(text) }
@@ -45,6 +46,7 @@ class KeyboardViewTest {
         override fun onToggleStyle() { Settings.update(context) { it.copy(style = if (it.style == Style.ORANGE) Style.WHITE else Style.ORANGE) } }
         override fun wantsCaps() = caps
         override fun onSwipe(xs: FloatArray, ys: FloatArray, caps: Int) { swipes++ }
+        override fun onSwipeProgress(xs: FloatArray, ys: FloatArray, caps: Int) { progress++ }
         override fun onPick(i: Int) { picks += i }
     }
     private lateinit var context: Context
@@ -268,6 +270,8 @@ class KeyboardViewTest {
         shot(v, "orange-swipe")
         touch(v, MotionEvent.ACTION_UP, path.last().first, path.last().second, time + 10)
         assertEquals(1, swipes)
+        // 18 moves 10 ms apart: the bar was brought up to date along the way, every 50 ms.
+        assertEquals(true, progress in 3..4)
         assertEquals("", typed.toString())
 
         // The bar: tap the middle word, then the left.

@@ -45,6 +45,8 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         fun wantsCaps(): Boolean
         /** A swipe across the letters, in view pixels; [caps] is [CAPS_NONE], [CAPS_FIRST] or [CAPS_ALL]. */
         fun onSwipe(xs: FloatArray, ys: FloatArray, caps: Int) {}
+        /** The swipe so far, every [LIVE_EVERY] ms while it goes on: for guesses in the bar as it grows. */
+        fun onSwipeProgress(xs: FloatArray, ys: FloatArray, caps: Int) {}
         /** The [i]th word in the suggestion bar was tapped: 0 left, 1 middle, 2 right. */
         fun onPick(i: Int) {}
     }
@@ -468,6 +470,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
     private var swipeMaybe = false
     /** ...and it has. */
     private var swiping = false
+    private var lastLive = 0L
 
     private fun canSwipe(z: Zone): Boolean = settings.swipe && wordsAllowed && page == Page.LETTERS &&
         alt == Alt.OFF && z.key.kind == Kind.CHAR && z.key.text.length == 1 && z.key.text[0] in 'a'..'z'
@@ -476,6 +479,8 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         if (swipeN == swipeX.size) { swipeX = swipeX.copyOf(swipeN * 2); swipeY = swipeY.copyOf(swipeN * 2) }
         swipeX[swipeN] = x; swipeY[swipeN] = y; swipeN++
     }
+
+    private fun capsNow() = when (shift) { Shift.OFF -> CAPS_NONE; Shift.ONCE -> CAPS_FIRST; Shift.LOCK -> CAPS_ALL }
 
     /** Where the letters are, for the swipe decoder. */
     fun swipeLayout(): SwipeDecoder.Layout? {
@@ -619,7 +624,14 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
                         handler.removeCallbacks(hold)
                         pressed = null; preview = null
                     }
-                    if (swiping) { invalidate(); return true }
+                    if (swiping) {
+                        if (e.eventTime - lastLive >= LIVE_EVERY) {
+                            lastLive = e.eventTime
+                            host.onSwipeProgress(swipeX.copyOf(swipeN), swipeY.copyOf(swipeN), capsNow())
+                        }
+                        invalidate()
+                        return true
+                    }
                 }
                 if (extended != null) {
                     val i = extendedAt(x, y)
@@ -636,8 +648,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
                 if (swiping) {
                     if (e.actionMasked == MotionEvent.ACTION_UP) {
                         addSwipePoint(x, y)
-                        val caps = when (shift) { Shift.OFF -> CAPS_NONE; Shift.ONCE -> CAPS_FIRST; Shift.LOCK -> CAPS_ALL }
-                        host.onSwipe(swipeX.copyOf(swipeN), swipeY.copyOf(swipeN), caps)
+                        host.onSwipe(swipeX.copyOf(swipeN), swipeY.copyOf(swipeN), capsNow())
                         if (shift == Shift.ONCE) { shift = Shift.OFF; autoShift = false; lastShiftTap = NEVER }
                     }
                     pressed = null
@@ -735,6 +746,8 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         const val CAPS_NONE = 0
         const val CAPS_FIRST = 1
         const val CAPS_ALL = 2
+        /** How often the bar's guesses are brought up to date during a swipe. */
+        const val LIVE_EVERY = 50L
 
         private val BAR = Color.rgb(36, 40, 43)
         private val BAR_PRESSED = Color.rgb(64, 70, 75)
