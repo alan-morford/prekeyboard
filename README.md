@@ -28,7 +28,8 @@ TouchPad keyboard. It shares no code with either.
   backspace, and learning the words you keep
 - **Double-space period**, and a period that brings its own space
 - **Emoji**: every emoji your phone can draw, by category, with your recent ones first
-- **Accents** on a long press of a letter
+- **Hold for more**: accents and extra symbols on a long press, each such key marked with a
+  dot (switch it on in the app, or hold the orange key)
 - **Cursor control**: hold the space bar and slide; with shift on, it selects
 - The **globe** asks which keyboard to use
 - Shift lights orange whenever the next letter will be a capital
@@ -45,13 +46,14 @@ TouchPad keyboard. It shares no code with either.
   to lock it on; tap again to let go. **Shift** works the same way, and lights orange while
   the next letter will be a capital. Hold the orange key to turn **Hold for more** on or off.
 - **Sym** opens the digits and the symbols the letters page doesn't have: `[ ] { } < > ^ ~ | \`,
-  `` ` ° £ × ÷ ± ≠ ¡ `` and `—`, nothing repeated from the letters. With Hold for more, hold a key for more: curly
-  quotes on `` ` ``, `« » ≤ ≥` on `<` and `>`, currencies on `£`, `√ ∞` on `÷`, superscripts
-  and fractions on the digits. On that page, the **globe** asks which keyboard to use (hold it to
-  switch between the Orange and White styles) and the
-  **smiley** opens the emoji (hold it for the text emoticons, `:-)` and friends). The bottom
-  row keeps its shape between the two pages, so no key moves under your thumb: ABC where
-  shift is, the smiley where `@` is, `—` where the period is, return where Sym is.
+  `` ` ° £ × ÷ ± ≠ ¡ `` and `—`, nothing repeated from the letters. With Hold for more on,
+  hold a key for more still: curly quotes on `` ` ``, `« » ≤ ≥` on `<` and `>`, currencies on
+  `£`, `√ ∞` on `÷`, superscripts and fractions on the digits. On that page, the **globe** asks
+  which keyboard to use (hold it to switch between the Orange and White styles) and the
+  **smiley** opens the emoji (with Hold for more on, hold it for the text emoticons, `:-)` and
+  friends). The bottom row keeps its shape between the two pages, so no key moves under your
+  thumb: ABC where shift is, the smiley where `@` is, `—` where the period is, return where
+  Sym is.
 - **Period**: it brings a space with it. Backspace straight after takes just the space; a
   space typed out of habit isn't doubled; `?`, `,` or another period go against the word.
   No space in numbers (`3.14`), web or email addresses, or fields that aren't for words.
@@ -76,7 +78,7 @@ TouchPad keyboard. It shares no code with either.
 Open **Pre Keyboard** from the app drawer. Everything there takes effect at once, even with
 the keyboard on screen.
 
-- **Style**: Orange or White.
+- **Style**: Orange or White. Holding the globe on the Sym page switches it too.
 - **Height**: Small, Medium or Large rows.
 - **Autocorrect** (on by default): fixes typos when you finish a word, and puts the apostrophe
   in contractions - `dont` becomes `don't`, `im` becomes `I'm`, a lone `i` becomes `I`. Words
@@ -88,6 +90,8 @@ the keyboard on screen.
   in orange, is the likeliest - what the space bar would make of your word. On the left is the
   word as you typed it, when that differs; tap it to keep it, and it is never corrected again.
 - **Swipe to type** (off by default): see above. It brings the suggestion bar with it.
+- **Hold for more** (off by default): hold a key for its accents and extra symbols; keys that
+  have them show a small dot. Holding the orange key turns it on or off too.
 - **Updates**: shows the version, with **Check now**. The keyboard itself looks for a new
   release on GitHub once a day, when it comes up, and says so in the bar above the keys; tap
   that for the release notes, then **Install** or **Later** (asked again a day later). The
