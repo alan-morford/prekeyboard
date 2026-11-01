@@ -10,6 +10,10 @@ package io.github.alan_morford.prekeyboard
  * word lands on the word and "..." stays together. A backspace after a period takes only its
  * space; after a swipe it takes the word and its spaces.
  *
+ * A space typed after a word (or the one a picked word brings) is the owner's, but sentence
+ * punctuation typed straight after it still goes against the word, and the space moves to
+ * after the punctuation: "word ," becomes "word, ".
+ *
  * It works on a [Field] rather than on Android's InputConnection, so the tests can drive it
  * with a plain string.
  */
@@ -45,6 +49,20 @@ class Composer(private val field: Field, private val clock: () -> Long) {
     private var autoTail: String? = null
     /** The auto space the last swipe followed, given back when a backspace takes the swipe. */
     private var swipedOn: String? = null
+    /** A word's last character and the space typed after it, while that space is the last thing typed. */
+    private var spaceTail: String? = null
+
+    /** Remembers the space just typed, if it follows a word, for punctuation to swap with. */
+    private fun markSpace() {
+        val b = field.before(2).toString()
+        spaceTail = b.takeIf { it.length == 2 && it[1] == ' ' && (it[0].isLetterOrDigit() || it[0] in CLOSERS) }
+    }
+
+    /** The space typed after a word is still the last thing typed. */
+    private fun spaceTyped(): Boolean {
+        val t = spaceTail ?: return false
+        return field.before(t.length).toString() == t
+    }
 
     /** The auto space is still there, with what it followed. */
     private fun autoSpaced(): Boolean {
@@ -52,16 +70,19 @@ class Composer(private val field: Field, private val clock: () -> Long) {
         return field.before(t.length).toString() == t
     }
 
-    fun reset() { last = null; swiped = null; autoTail = null; lastSpaceAt = Long.MIN_VALUE / 2 }
+    fun reset() { last = null; swiped = null; autoTail = null; spaceTail = null; lastSpaceAt = Long.MIN_VALUE / 2 }
 
     /** Something typed on the keyboard. */
     fun type(text: String, rules: Rules) {
         val spaceAgain = text == " " && clock() - lastSpaceAt < DOUBLE_SPACE_MS
         val spaced = autoSpaced()
+        val tail = spaceTail?.takeIf { spaceTyped() }
+        val typedSpace = tail != null
         autoTail = null
+        spaceTail = null
         swiped = null
         // A space on top of the keyboard's own: already there. It still counts toward a double space.
-        if (text == " " && spaced) { last = null; lastSpaceAt = clock(); return }
+        if (text == " " && spaced) { last = null; lastSpaceAt = clock(); markSpace(); return }
         last = null
         if (text == " " && rules.doubleSpacePeriod && spaceAgain && endsWithWordAndSpace()) {
             field.batch { field.delete(1); field.commit(". ") }
@@ -69,9 +90,12 @@ class Composer(private val field: Field, private val clock: () -> Long) {
             lastSpaceAt = Long.MIN_VALUE / 2
             return
         }
+        // A period after a number and a space starts something (3 .5, 3.14 .net); after a word, it ends it.
+        val afterNumber = typedSpace && text == "." && tail!![0].isDigit()
+        val snap = (spaced || (typedSpace && !afterNumber)) && text.length == 1 && text[0] in SENTENCE
         field.batch {
             // Sentence punctuation goes against the word, not after the space.
-            if (spaced && text.length == 1 && text[0] in SENTENCE) field.delete(1)
+            if (snap) field.delete(1)
             if (isSeparator(text) && rules.autocorrect) {
                 val fix = correctWord(text)
                 if (fix != null) { field.delete(fix.typed.length); field.commit(fix.fixed + text); last = fix }
@@ -80,8 +104,13 @@ class Composer(private val field: Field, private val clock: () -> Long) {
             if (text == "." && rules.prose && periodWantsSpace()) {
                 field.commit(" ")
                 autoTail = ". "
+            } else if (snap && typedSpace) {
+                // The owner's space moves to after the punctuation, where it belongs.
+                field.commit(" ")
+                autoTail = "$text "
             }
         }
+        if (text == " ") markSpace()
         lastSpaceAt = if (text == " ") clock() else Long.MIN_VALUE / 2
     }
 
@@ -106,6 +135,7 @@ class Composer(private val field: Field, private val clock: () -> Long) {
         last = null
         swiped = null
         lastSpaceAt = Long.MIN_VALUE / 2
+        spaceTail = null
         // The keyboard's own space is not left trailing on the line.
         if (autoSpaced()) field.delete(1)
         autoTail = null
@@ -121,6 +151,7 @@ class Composer(private val field: Field, private val clock: () -> Long) {
     fun backspace(): Boolean {
         val spaced = autoSpaced()
         autoTail = null
+        spaceTail = null
         swiped?.let { w ->
             swiped = null
             val tail = w + if (spaced) " " else ""
@@ -137,13 +168,14 @@ class Composer(private val field: Field, private val clock: () -> Long) {
         val done = fix.fixed + fix.separator
         if (field.before(done.length).toString() != done) return false
         field.batch { field.delete(done.length); field.commit(fix.typed + fix.separator) }
+        if (fix.separator == " ") markSpace()
         corrector?.learn(fix.typed)
         onLearned(fix.typed)
         return true
     }
 
     /** Anything else that moves on from the last correction (the cursor moved, say). */
-    fun forget() { last = null; swiped = null; autoTail = null }
+    fun forget() { last = null; swiped = null; autoTail = null; spaceTail = null }
 
     /** The swiped word is still the last thing typed (with its space, if that is still there). */
     fun swipedIsLast(): Boolean {
@@ -165,6 +197,7 @@ class Composer(private val field: Field, private val clock: () -> Long) {
         lastSpaceAt = Long.MIN_VALUE / 2
         swipedOn = autoTail?.takeIf { autoSpaced() }
         autoTail = null
+        spaceTail = null
         val b = field.before(1)
         swipedSpace = b.isNotEmpty() && !b[0].isWhitespace() && b[0] !in OPENERS
         field.batch {
@@ -196,6 +229,7 @@ class Composer(private val field: Field, private val clock: () -> Long) {
         autoTail = null
         val typed = currentWord()
         field.batch { field.delete(typed.length); field.commit("$word ") }
+        markSpace()
         // A space after a picked word counts as the first of a double-tapped space.
         lastSpaceAt = clock()
         if (learn) { corrector?.learn(word); onLearned(word) }

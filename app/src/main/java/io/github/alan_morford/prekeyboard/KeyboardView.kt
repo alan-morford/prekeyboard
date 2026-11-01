@@ -101,10 +101,13 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
 
     /**
      * Targeting Android 15 means the system may lay the navigation bar over the keyboard's
-     * window rather than beside it; when it does, the keys move up out of its way.
+     * window rather than beside it; when it does, the keys move up out of its way. With gesture
+     * navigation, Pixels draw the keyboard's own bar (hide ⌄, switch keyboard) inside the
+     * keyboard's window and report it as a caption bar, not a navigation bar: that counts too.
      */
     override fun onApplyWindowInsets(insets: WindowInsets): WindowInsets {
-        val nav = if (Build.VERSION.SDK_INT >= 30) insets.getInsets(WindowInsets.Type.navigationBars()).bottom else 0
+        val nav = if (Build.VERSION.SDK_INT >= 30)
+            insets.getInsets(WindowInsets.Type.navigationBars() or WindowInsets.Type.captionBar()).bottom else 0
         if (nav != navInset) { navInset = nav; requestLayout() }
         return super.onApplyWindowInsets(insets)
     }

@@ -23,7 +23,8 @@ TouchPad keyboard. It shares no code with either.
 - Two styles, **Orange** and **White**: hold the globe on the Sym page to switch on the fly
 - **Swipe to type**, with the word you would get shown as you swipe, and the next likeliest
   guesses one tap away
-- **Suggestion bar**: three words above the keys, the likeliest in the middle in orange
+- **Suggestion bar**: three words above the keys, the likeliest in the middle in orange, and
+  if you like, an emoji for the word on the right (`pizza` → 🍕)
 - **Autocorrect** for typos and for contractions (`dont` → `don't`), undone by the next
   backspace, and learning the words you keep
 - **Double-space period**, and a period that brings its own space
@@ -57,6 +58,9 @@ TouchPad keyboard. It shares no code with either.
 - **Period**: it brings a space with it. Backspace straight after takes just the space; a
   space typed out of habit isn't doubled; `?`, `,` or another period go against the word.
   No space in numbers (`3.14`), web or email addresses, or fields that aren't for words.
+- **Punctuation after a space**: typed a space, then decided on a comma? `, . ? ! : ;` typed
+  straight after the space go against the word and the space moves after them (`word ,` →
+  `word, `).
 - **Emoji**: every emoji your phone can draw, by category, with your recent ones first.
   Scroll the grid, or tap a category along the bottom.
 - **Hold for more** (off at first; switch it on in the app, or hold the orange key): hold a
@@ -90,6 +94,9 @@ the keyboard on screen.
   in orange, is the likeliest - what the space bar would make of your word. On the left is the
   word as you typed it, when that differs; tap it to keep it, and it is never corrected again.
 - **Swipe to type** (off by default): see above. It brings the suggestion bar with it.
+- **Emoji suggestions** (off by default): the bar's right-hand place shows an emoji for the
+  word, when there is one (`pizza` → 🍕, `love` → ❤️). Tap it to swap the word for the emoji.
+  It brings the suggestion bar with it.
 - **Hold for more** (off by default): hold a key for its accents and extra symbols; keys that
   have them show a small dot. Holding the orange key turns it on or off too.
 - **Updates**: shows the version, with **Check now**. The keyboard itself looks for a new
@@ -132,17 +139,20 @@ JDK 17 or later and the Android SDK (platform 35):
 The tests run on the JVM with Robolectric, which draws the real keyboard: they leave
 screenshots of every page in `app/build/shots/`.
 
-The word list and the emoji list are generated and checked in, so a build needs no network.
+The word list and the emoji lists are generated and checked in, so a build needs no network.
 To regenerate them:
 
 ```sh
 python3 tools/build_dictionary.py <scowl>/final en_50k.txt app/src/main/assets/dictionary.txt
 python3 tools/build_emoji.py emoji-test.txt app/src/main/assets/emoji.txt
+python3 tools/build_emoji_words.py annotations/en.xml annotationsDerived/en.xml \
+    app/src/main/assets/emoji.txt app/src/main/assets/dictionary.txt app/src/main/assets/emoji_words.txt
 ```
 
 (SCOWL from http://wordlist.aspell.net/, `en_50k.txt` from
 [FrequencyWords](https://github.com/hermitdave/FrequencyWords), and `emoji-test.txt` from
-https://unicode.org/Public/emoji/.)
+https://unicode.org/Public/emoji/; the two `en.xml` from
+[CLDR](https://github.com/unicode-org/cldr), `common/annotations` and `common/annotationsDerived`.)
 
 ## The typeface
 
@@ -159,5 +169,5 @@ An APK built that way contains the font, so keep it to yourself.
 
 ## Licence
 
-Apache 2.0 - see [LICENSE](LICENSE). The word list is CC BY-SA 4.0 and the emoji list is under
+Apache 2.0 - see [LICENSE](LICENSE). The word list is CC BY-SA 4.0 and the emoji lists are under
 the Unicode License; see [NOTICE](NOTICE).

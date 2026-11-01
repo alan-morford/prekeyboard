@@ -65,13 +65,17 @@ class SetupActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
         column.addView(toggle("Double-space period", "Two quick spaces after a word type \". \".",
             { Settings.read(this).doubleSpacePeriod }) { v -> Settings.update(this) { it.copy(doubleSpacePeriod = v) } })
         column.addView(toggle("Suggestion bar", "Three words above the keys as you type, the likeliest " +
-            "in the middle in orange. Tap one to use it. Always on with swipe to type.",
-            { Settings.read(this).suggestions }, forcedOn = { Settings.read(this).swipe })
+            "in the middle in orange. Tap one to use it. Always on with swipe to type or emoji suggestions.",
+            { Settings.read(this).suggestions }, forcedOn = { Settings.read(this).let { it.swipe || it.emojiSuggestions } })
             { v -> Settings.update(this) { it.copy(suggestions = v) } })
         column.addView(toggle("Swipe to type", "Slide across the letters and lift at the end of the word. " +
             "Backspace straight after takes the whole word. Shows the suggestion bar too, with the " +
             "other guesses.",
             { Settings.read(this).swipe }) { v -> Settings.update(this) { it.copy(swipe = v) } })
+        column.addView(toggle("Emoji suggestions", "The suggestion bar's right-hand place shows an " +
+            "emoji for the word, when there is one (pizza → 🍕). Tap it to swap the word for the emoji. " +
+            "Shows the suggestion bar too.",
+            { Settings.read(this).emojiSuggestions }) { v -> Settings.update(this) { it.copy(emojiSuggestions = v) } })
         column.addView(toggle("Hold for more", "Press and hold a key for its accents and extra " +
             "symbols (é, ñ, curly quotes, £, ½…). Keys that have them show a small dot. Hold the " +
             "orange key to switch it on or off from the keyboard.",

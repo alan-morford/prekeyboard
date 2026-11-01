@@ -3,6 +3,8 @@ package io.github.alan_morford.prekeyboard
 import android.content.Intent
 import android.content.SharedPreferences
 import android.inputmethodservice.InputMethodService
+import android.graphics.Paint
+import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
@@ -44,6 +46,9 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
     /** What the suggestion bar shows, and whether its left word is the word as typed. */
     private var bar = listOf("", "", "")
     private var barVerbatim = false
+    /** The bar's right-hand place holds an emoji for the word, not a word. */
+    private var barEmoji = false
+    private var emojiWords: EmojiWords? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -58,7 +63,14 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
             c.learnAll(learned)
             val d = SwipeDecoder(c.entries())
             for (w in learned) d.add(w, LEARNED_SCORE)
-            main.post { composer.corrector = c; decoder = d; refreshBar() }
+            // Before Android 6 there is no asking whether an emoji draws: the panel's own list says.
+            val drawable = if (Build.VERSION.SDK_INT >= 23) null
+                else EmojiPanel.load(app).flatMap { it.emoji }.toHashSet()
+            val paint = Paint()
+            val ew = app.assets.open("emoji_words.txt").bufferedReader(Charsets.UTF_8).useLines { lines ->
+                EmojiWords(lines) { e -> drawable?.contains(e) ?: EmojiPanel.canDraw(paint, e) }
+            }
+            main.post { composer.corrector = c; decoder = d; emojiWords = ew; refreshBar() }
         }.apply { name = "dictionary"; isDaemon = true }.start()
     }
 
@@ -163,6 +175,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
     private fun refreshBar() {
         val v = view ?: return
         barVerbatim = false
+        barEmoji = false
         bar = listOf("", "", "")
         if (v.settings.showsBar && prose()) {
             // The cursor moved away from the swiped word: it is no longer the one to replace.
@@ -184,6 +197,10 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
                     } else listOf(others.getOrElse(0) { "" }, best, others.getOrElse(1) { "" })
                 }
             }
+            // An emoji for the middle word, in place of the third.
+            if (v.settings.emojiSuggestions && bar[1].isNotEmpty()) {
+                emojiWords?.forWord(bar[1])?.let { e -> bar = listOf(bar[0], bar[1], e); barEmoji = true }
+            }
         }
         v.setSuggestions(bar)
     }
@@ -192,6 +209,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         val word = bar.getOrNull(i)?.takeIf { it.isNotEmpty() } ?: return
         val learn = i == 0 && barVerbatim && composer.corrector?.isKnown(word) == false
         composer.pick(word, learn)
+        if (i == 2 && barEmoji) Settings.addRecentEmoji(this, word)
         refreshBar()
     }
 

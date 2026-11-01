@@ -143,6 +143,32 @@ class ComposerTest {
         composer.beforeEnter(on); assertEquals("Wait...", text.toString())
     }
 
+    @Test fun punctuationAfterATypedSpaceSnapsToTheWord() {
+        type("Wait ,")
+        assertEquals("Wait, ", text.toString())
+        type(" so")                                    // the moved space absorbs a habitual one
+        assertEquals("Wait, so", text.toString())
+        text.setLength(0); composer.reset()
+        type("Really ?"); assertEquals("Really? ", text.toString())
+        text.setLength(0); composer.reset()
+        type("The end ."); assertEquals("The end. ", text.toString())
+        // After a corrected word, and after a picked one.
+        text.setLength(0); composer.reset()
+        type("teh !"); assertEquals("the! ", text.toString())
+        text.setLength(0); composer.reset()
+        type("I like teh"); composer.pick("the", learn = false); type(",")
+        assertEquals("I like the, ", text.toString())
+        // Only straight after the space: not once something else came between.
+        text.setLength(0); composer.reset()
+        type("a "); composer.forget(); type(",")
+        assertEquals("a ,", text.toString())
+        text.setLength(0); composer.reset()
+        type("so "); now += 1500; type(" ,"); assertEquals("so  ,", text.toString())
+        // A period after a number and a space starts a number or a name (3 .5, 3.14 .net).
+        text.setLength(0); composer.reset()
+        type("3 ."); assertEquals("3 .", text.toString())
+    }
+
     @Test fun pickingFromTheBar() {
         type("I like teh")
         assertEquals("teh", composer.currentWord())

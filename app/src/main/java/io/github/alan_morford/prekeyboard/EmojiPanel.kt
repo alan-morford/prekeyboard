@@ -261,6 +261,10 @@ class EmojiPanel(private val context: Context, private val view: KeyboardView, p
         /** The newest emoji version each older Android can draw (before hasGlyph, API 23). */
         private fun maxVersionBefore23() = if (Build.VERSION.SDK_INT >= 22) 1.0 else 0.7
 
+        /** Whether this device draws [e] (newer than [version] means no, before Android 6). */
+        fun canDraw(paint: Paint, e: String, version: Double = 99.0) =
+            if (Build.VERSION.SDK_INT >= 23) paint.hasGlyph(e) else version <= maxVersionBefore23()
+
         fun load(context: Context): List<Category> {
             val paint = Paint()
             val byGroup = LinkedHashMap<String, ArrayList<String>>()
@@ -270,9 +274,7 @@ class EmojiPanel(private val context: Context, private val view: KeyboardView, p
                     val parts = line.split('\t')
                     if (parts.size != 3) continue
                     val (group, version, e) = parts
-                    val drawable = if (Build.VERSION.SDK_INT >= 23) paint.hasGlyph(e)
-                        else (version.toDoubleOrNull() ?: 99.0) <= maxVersionBefore23()
-                    if (drawable) byGroup.getOrPut(group) { ArrayList() } += e
+                    if (canDraw(paint, e, version.toDoubleOrNull() ?: 99.0)) byGroup.getOrPut(group) { ArrayList() } += e
                 }
             }
             return byGroup.filter { it.value.isNotEmpty() }.map { (g, list) -> Category(g, ICONS[g] ?: list[0], list) }

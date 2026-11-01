@@ -16,9 +16,11 @@ data class Settings(
     val swipe: Boolean = false,
     /** Press and hold a key for its extra characters (accents, more symbols), each such key dotted. */
     val holdForMore: Boolean = false,
+    /** An emoji for the word in the suggestion bar's right-hand place, when there is one. */
+    val emojiSuggestions: Boolean = false,
 ) {
-    /** Swiping needs the bar too: it is where the other guesses go. */
-    val showsBar get() = suggestions || swipe
+    /** Swiping and emoji suggestions need the bar too: it is where they show. */
+    val showsBar get() = suggestions || swipe || emojiSuggestions
 
     /** Row heights in dp. Medium is close to a Pre key's proportions on a modern phone. */
     enum class Height(val dp: Int, val label: String) { SMALL(46, "Small"), MEDIUM(54, "Medium"), LARGE(62, "Large") }
@@ -39,6 +41,7 @@ data class Settings(
                 suggestions = p.getBoolean("suggestions", d.suggestions),
                 swipe = p.getBoolean("swipe", d.swipe),
                 holdForMore = p.getBoolean("holdForMore", d.holdForMore),
+                emojiSuggestions = p.getBoolean("emojiSuggestions", d.emojiSuggestions),
             )
         }
 
@@ -47,7 +50,7 @@ data class Settings(
                 .putString("style", s.style.name).putString("height", s.height.name)
                 .putBoolean("autocorrect", s.autocorrect).putBoolean("doubleSpacePeriod", s.doubleSpacePeriod)
                 .putBoolean("suggestions", s.suggestions).putBoolean("swipe", s.swipe)
-                .putBoolean("holdForMore", s.holdForMore)
+                .putBoolean("holdForMore", s.holdForMore).putBoolean("emojiSuggestions", s.emojiSuggestions)
                 .apply()
         }
 
