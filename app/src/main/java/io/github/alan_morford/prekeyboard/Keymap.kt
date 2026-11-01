@@ -104,27 +104,56 @@ object Keymap {
         ),
     )
 
-    private fun digit(d: String) = Slot(1f, Key(Kind.CHAR, d, accent = true))
-    private fun s(t: String) = Slot(1f, Key(Kind.CHAR, t))
+    /** A digit in the accent colour; held, its superscript and fractions. */
+    private fun digit(d: Char, ext: String) =
+        Slot(1f, Key(Kind.CHAR, d.toString(), extended = "$d $ext".split(' '), accent = true))
 
-    /** The Sym page: digits in the accent colour, then the symbols, as LuneOS's phone symbol page. */
+    /** A symbol; [ext] is its press-and-hold list after itself. */
+    private fun s(t: String, ext: String? = null) =
+        Slot(1f, Key(Kind.CHAR, t, extended = ext?.let { "$t $it".split(' ') }))
+
+    /**
+     * The Sym page: digits in the accent colour, then only symbols the letters page doesn't
+     * already type (its printed alternates, @ , . and their hold lists), so the page adds to
+     * the letters instead of repeating them. The digits stay, since a row of them is what
+     * people reach for.
+     */
     val symbols: List<List<Slot>> = run {
-        val excl = Key(Kind.CHAR, "!")
-        val paren = Key(Kind.CHAR, ")")
-        val semi = Key(Kind.CHAR, ";")
         val back = Key(Kind.BACKSPACE)
         listOf(
-            "1234567890".map { digit(it.toString()) },
-            listOf(Slot(0.5f, excl, drawn = false), Slot(1f, excl)) +
-                "@#$%&*(".map { s(it.toString()) } +
-                listOf(Slot(1f, paren), Slot(0.5f, paren, drawn = false)),
+            listOf(
+                digit('1', "¹ ½ ⅓ ¼ ⅛"),
+                digit('2', "² ⅔"),
+                digit('3', "³ ¾ ⅜"),
+                digit('4', "⁴"),
+                digit('5', "⁵ ⅝"),
+                digit('6', "⁶"),
+                digit('7', "⁷ ⅞"),
+                digit('8', "⁸"),
+                digit('9', "⁹"),
+                digit('0', "⁰ ⁿ ∅"),
+            ),
+            listOf(
+                s("["), s("]"), s("{"), s("}"),
+                s("<", "‹ « ≤"), s(">", "› » ≥"),
+                s("^"), s("~", "≈"), s("|", "¦ ‖"), s("\\"),
+            ),
             // Where LuneOS has its language key, Android gets the keyboard picker.
-            listOf(f(Kind.GLOBE, 1.25f), Slot(0.25f, semi, drawn = false), Slot(1f, semi)) +
-                ":=+-'\"".map { s(it.toString()) } +
-                listOf(Slot(0.25f, back, drawn = false), Slot(1.25f, back)),
+            listOf(
+                f(Kind.GLOBE),
+                s("`", "´ ‘ ’ “ ” ‚ „"),
+                s("°", "′ ″ ‰"),
+                s("£", "₹ ₩ ₽ ₺ ₪ ₱ ₿ ¤ ƒ"),
+                s("×", "· ∗"),
+                s("÷", "√ ∞ ∆ ∑"),
+                s("±", "∓"),
+                s("≠", "≡"),
+                s("¡", "‽"),
+                Slot(1f, back),
+            ),
             // Key for key the letters page's bottom row (ABC where shift is, emoji where @ is,
-            // … where the period is, Return where Sym is), so nothing on it moves when the
-            // page changes.
+            // the dash where the period is, Return where Sym is), so nothing on it moves when
+            // the page changes.
             run {
                 val abc = Key(Kind.SYM, label = "ABC")
                 val ret = Key(Kind.RETURN)
@@ -134,7 +163,7 @@ object Keymap {
                     // Tap for the emoji page; hold for LuneOS's text emoticons.
                     Slot(1.18f, Key(Kind.EMOJI, extended = listOf(":-)", ";-)", ":-(", ":'(", ":-P", ":-O", "<3"))),
                     Slot(4f, Key(Kind.SPACE, " ")),
-                    Slot(1.17f, Key(Kind.CHAR, "…", extended = listOf("•", "…", "±", "¬", "¦", "µ", "¤"))),
+                    Slot(1.17f, Key(Kind.CHAR, "—", extended = listOf("—", "–", "¬"))),
                     Slot(1.48f, ret),
                     Slot(0.35f, ret, drawn = false),
                 )

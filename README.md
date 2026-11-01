@@ -45,10 +45,13 @@ TouchPad keyboard. It shares no code with either.
   to lock it on; tap again to let go. **Shift** works the same way, and lights orange while
   the next letter will be a capital. Hold the orange key to switch between the Orange and White
   styles.
-- **Sym** opens the digits and symbols. On that page, the **globe** asks which keyboard to use
-  and the **smiley** opens the emoji (hold it for the text emoticons, `:-)` and friends). The
-  bottom row keeps its shape between the two pages, so no key moves under your thumb: ABC
-  where shift is, the smiley where `@` is, `…` where the period is, return where Sym is.
+- **Sym** opens the digits and the symbols the letters page doesn't have: `[ ] { } < > ^ ~ | \`,
+  `` ` ° £ × ÷ ± ≠ ¡ `` and `—`, nothing repeated from the letters. Hold a key for more: curly
+  quotes on `` ` ``, `« » ≤ ≥` on `<` and `>`, currencies on `£`, `√ ∞` on `÷`, superscripts
+  and fractions on the digits. On that page, the **globe** asks which keyboard to use and the
+  **smiley** opens the emoji (hold it for the text emoticons, `:-)` and friends). The bottom
+  row keeps its shape between the two pages, so no key moves under your thumb: ABC where
+  shift is, the smiley where `@` is, `—` where the period is, return where Sym is.
 - **Period**: it brings a space with it. Backspace straight after takes just the space; a
   space typed out of habit isn't doubled; `?`, `,` or another period go against the word.
   No space in numbers (`3.14`), web or email addresses, or fields that aren't for words.

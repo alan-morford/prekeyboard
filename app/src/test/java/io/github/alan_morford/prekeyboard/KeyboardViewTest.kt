@@ -178,11 +178,11 @@ class KeyboardViewTest {
         tap(v, 3, 0.3f)                            // the spacer left of shift is shift
         letter(v, 'a')
         tap(v, 3, 9.7f)                            // the spacer right of Sym is Sym
-        tap(v, 0, 0.5f); tap(v, 0, 9.5f); tap(v, 1, 1.0f); tap(v, 2, 2.0f)
+        tap(v, 0, 0.5f); tap(v, 0, 9.5f); tap(v, 1, 1.5f); tap(v, 2, 2.5f)
         tap(v, 3, 0.7f)                            // ABC
         letter(v, 'b')
         tap(v, 1, 9.5f)                            // backspace
-        assertEquals("A10!;", typed.toString())
+        assertEquals("A10]°", typed.toString())
     }
 
     @Test fun autoCapsAndHoldForAccents() {
