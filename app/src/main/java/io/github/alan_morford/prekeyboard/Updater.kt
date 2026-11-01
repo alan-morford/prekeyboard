@@ -86,11 +86,12 @@ object Updater {
 
     /** The latest release, or null when there's no answer or it has no APK to install. */
     private fun fetch(): Release? = try {
-        val conn = URL(LATEST).openConnection() as HttpURLConnection
-        conn.connectTimeout = 10_000
-        conn.readTimeout = 10_000
-        conn.setRequestProperty("Accept", "application/vnd.github+json")
-        conn.setRequestProperty("User-Agent", "PreKeyboard-Android")
+        val conn = Net.open(LATEST) {
+            it.connectTimeout = 10_000
+            it.readTimeout = 10_000
+            it.setRequestProperty("Accept", "application/vnd.github+json")
+            it.setRequestProperty("User-Agent", "PreKeyboard-Android")
+        }
         try {
             if (conn.responseCode != 200) { Log.w(TAG, "update check: HTTP ${conn.responseCode}"); null }
             else parse(conn.inputStream.bufferedReader().use { it.readText() })

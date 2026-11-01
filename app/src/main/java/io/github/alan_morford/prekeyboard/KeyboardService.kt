@@ -68,7 +68,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         super.onDestroy()
     }
 
-    /** A setting changed - in the setup screen, or by long-pressing the orange key: show it now. */
+    /** A setting changed - in the setup screen, or by long-pressing the orange key or globe: show it now. */
     override fun onSharedPreferenceChanged(prefs: SharedPreferences?, key: String?) {
         view?.apply(Settings.read(this))
         refreshBar()
@@ -288,6 +288,8 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
 
     override fun onToggleStyle() =
         Settings.update(this) { it.copy(style = if (it.style == Style.ORANGE) Style.WHITE else Style.ORANGE) }
+
+    override fun onToggleHold() = Settings.update(this) { it.copy(holdForMore = !it.holdForMore) }
 
     override fun wantsCaps(): Boolean {
         val info = editor ?: return false

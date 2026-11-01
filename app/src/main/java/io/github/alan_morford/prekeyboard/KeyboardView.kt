@@ -39,8 +39,10 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         fun onPickKeyboard()
         /** One step of the cursor; [select] extends the selection instead. */
         fun onCursor(dx: Int, dy: Int, select: Boolean)
-        /** Long press on the orange key: Orange to White and back. */
+        /** Long press on the globe: Orange to White and back. */
         fun onToggleStyle()
+        /** Long press on the orange key: "Hold for more" on or off. */
+        fun onToggleHold()
         /** Whether the field wants a capital here (the start of a sentence, say). */
         fun wantsCaps(): Boolean
         /** A swipe across the letters, in view pixels; [caps] is [CAPS_NONE], [CAPS_FIRST] or [CAPS_ALL]. */
@@ -223,7 +225,25 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
             Kind.ORANGE -> painter.orange(c, box, style, alt)
             Kind.SYM -> functionLabel(c, key.label ?: "", box)
         }
+        if (holds(key)) holdDot(c, key, box)
     }
+
+    /** Whether holding [key] opens its list: only with "Hold for more" on. */
+    private fun holds(key: Key) = settings.holdForMore && key.extended != null
+
+    /**
+     * The mark of a key with more under it: a small dot in the style's colour, in the top
+     * corner the printed alternate leaves free (top right on a key without one).
+     */
+    private fun holdDot(c: Canvas, key: Key, r: RectF) {
+        val radius = Math.max(2f * dp, r.height() * 0.045f)
+        val i = inset(r) + radius
+        val x = if (key.alt != null && key.altPos == AltPos.RIGHT) r.left + i else r.right - i
+        dotPaint.color = style.accent
+        c.drawCircle(x, r.top + i, radius, dotPaint)
+    }
+
+    private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     private fun functionLabel(c: Canvas, s: String, box: RectF) {
         text.textSize = fitted(s, rowHeight * 0.34f, box.width() - 8 * dp)
@@ -261,8 +281,14 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         // hangs below the line instead of lifting the Q. As on the Pre, a letter is centred
         // in its key by its advance (not its ink, which Q's tail widens), nudged a little
         // away from its alternate. The "@0" key keeps the two side by side.
+        // Only a letter hangs, though: a comma's tail or the @'s bowl would reach the key's
+        // edge, so a symbol is lifted until its ink rests on the letters' bottom line.
         text.getTextBounds("H", 0, 1, ink)
-        val baseline = r.bottom - i - ink.bottom
+        var baseline = r.bottom - i - ink.bottom
+        if (!letter.all { it.isLetter() }) {
+            text.getTextBounds(letter, 0, letter.length, ink)
+            baseline = Math.min(baseline, r.bottom - i - ink.bottom)
+        }
         val lx = if (key.altPos == AltPos.INLINE) {
             text.getTextBounds(letter, 0, letter.length, ink)
             r.left + i - ink.left
@@ -571,9 +597,14 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
             Kind.ORANGE -> {
                 held = true
                 performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                host.onToggleHold()
+            }
+            Kind.GLOBE -> {
+                held = true
+                performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                 host.onToggleStyle()
             }
-            else -> if (z.key.extended != null) { held = true; showExtended(z) }
+            else -> if (holds(z.key)) { held = true; showExtended(z) }
         }
     }
 
@@ -601,8 +632,8 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
                 handler.postDelayed(repeat, FIRST_REPEAT)
             }
             Kind.SPACE -> handler.postDelayed(hold, HOLD_FOR_CURSOR)
-            Kind.ORANGE -> handler.postDelayed(hold, HOLD_FOR_STYLE)
-            else -> if (z.key.extended != null) handler.postDelayed(hold, HOLD_FOR_EXTENDED)
+            Kind.ORANGE, Kind.GLOBE -> handler.postDelayed(hold, HOLD_FOR_SETTING)
+            else -> if (holds(z.key)) handler.postDelayed(hold, HOLD_FOR_EXTENDED)
         }
         invalidate()
     }
@@ -799,7 +830,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         private const val HOLD_FOR_EXTENDED = 400L
         // Our own: long enough that a slow tap never trips them.
         private const val HOLD_FOR_CURSOR = 450L
-        private const val HOLD_FOR_STYLE = 600L
+        private const val HOLD_FOR_SETTING = 600L
         private const val CURSOR_STEP_X = 12f
 
         /** No tap yet: far enough back that the next tap is never the second of a pair. */

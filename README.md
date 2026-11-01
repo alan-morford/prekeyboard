@@ -9,7 +9,7 @@ it - in two styles:
 | ![Orange](docs/orange.png) | ![White](docs/white.png) |
 
 **Orange** prints the digits and the orange key in orange, as on the Pre. **White** prints
-everything white. Hold the orange key to switch between them at any time.
+everything white. Hold the globe on the Sym page to switch between them at any time.
 
 It began as the "Pre (Orange)" and "Pre (White)" layouts of
 [LuneOS's keyboard](https://github.com/webOS-ports/webos-keyboard), and the idea of bringing a
@@ -20,7 +20,7 @@ TouchPad keyboard. It shares no code with either.
 
 - The Pre's layout key for key: four rows in matching columns, the orange key, Sym, and every
   key's alternate printed where the Pre printed it
-- Two styles, **Orange** and **White**: hold the orange key to switch on the fly
+- Two styles, **Orange** and **White**: hold the globe on the Sym page to switch on the fly
 - **Swipe to type**, with the word you would get shown as you swipe, and the next likeliest
   guesses one tap away
 - **Suggestion bar**: three words above the keys, the likeliest in the middle in orange
@@ -43,12 +43,12 @@ TouchPad keyboard. It shares no code with either.
 
 - **Orange key**: tap, and the next key types its printed alternate (orange + E = 1). Double tap
   to lock it on; tap again to let go. **Shift** works the same way, and lights orange while
-  the next letter will be a capital. Hold the orange key to switch between the Orange and White
-  styles.
+  the next letter will be a capital. Hold the orange key to turn **Hold for more** on or off.
 - **Sym** opens the digits and the symbols the letters page doesn't have: `[ ] { } < > ^ ~ | \`,
-  `` ` ° £ × ÷ ± ≠ ¡ `` and `—`, nothing repeated from the letters. Hold a key for more: curly
+  `` ` ° £ × ÷ ± ≠ ¡ `` and `—`, nothing repeated from the letters. With Hold for more, hold a key for more: curly
   quotes on `` ` ``, `« » ≤ ≥` on `<` and `>`, currencies on `£`, `√ ∞` on `÷`, superscripts
-  and fractions on the digits. On that page, the **globe** asks which keyboard to use and the
+  and fractions on the digits. On that page, the **globe** asks which keyboard to use (hold it to
+  switch between the Orange and White styles) and the
   **smiley** opens the emoji (hold it for the text emoticons, `:-)` and friends). The bottom
   row keeps its shape between the two pages, so no key moves under your thumb: ABC where
   shift is, the smiley where `@` is, `—` where the period is, return where Sym is.
@@ -57,7 +57,9 @@ TouchPad keyboard. It shares no code with either.
   No space in numbers (`3.14`), web or email addresses, or fields that aren't for words.
 - **Emoji**: every emoji your phone can draw, by category, with your recent ones first.
   Scroll the grid, or tap a category along the bottom.
-- **Hold a letter** for its accents: slide to the one you want and let go.
+- **Hold for more** (off at first; switch it on in the app, or hold the orange key): hold a
+  key for its accents or extra symbols, slide to the one you want and let go. Keys that have
+  them carry a small dot in the style's colour.
 - **Hold the space bar** and slide: the cursor follows your finger, left and right a character
   at a time, up and down a line at a time. With shift on, it selects as it goes.
 - **Hold backspace** and it repeats, then starts taking whole words.

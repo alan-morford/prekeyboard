@@ -5,7 +5,7 @@ import android.content.SharedPreferences
 
 /**
  * The owner's choices. The keyboard listens for changes, so a change made in the setup screen
- * (or by long-pressing the orange key) shows at once, with the keyboard still up.
+ * (or by long-pressing the orange key or the globe) shows at once, with the keyboard still up.
  */
 data class Settings(
     val style: Style = Style.ORANGE,
@@ -14,6 +14,8 @@ data class Settings(
     val doubleSpacePeriod: Boolean = true,
     val suggestions: Boolean = false,
     val swipe: Boolean = false,
+    /** Press and hold a key for its extra characters (accents, more symbols), each such key dotted. */
+    val holdForMore: Boolean = false,
 ) {
     /** Swiping needs the bar too: it is where the other guesses go. */
     val showsBar get() = suggestions || swipe
@@ -36,6 +38,7 @@ data class Settings(
                 doubleSpacePeriod = p.getBoolean("doubleSpacePeriod", d.doubleSpacePeriod),
                 suggestions = p.getBoolean("suggestions", d.suggestions),
                 swipe = p.getBoolean("swipe", d.swipe),
+                holdForMore = p.getBoolean("holdForMore", d.holdForMore),
             )
         }
 
@@ -44,6 +47,7 @@ data class Settings(
                 .putString("style", s.style.name).putString("height", s.height.name)
                 .putBoolean("autocorrect", s.autocorrect).putBoolean("doubleSpacePeriod", s.doubleSpacePeriod)
                 .putBoolean("suggestions", s.suggestions).putBoolean("swipe", s.swipe)
+                .putBoolean("holdForMore", s.holdForMore)
                 .apply()
         }
 

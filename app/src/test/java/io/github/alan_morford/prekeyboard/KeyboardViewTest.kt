@@ -44,6 +44,7 @@ class KeyboardViewTest {
         override fun onPickKeyboard() { picked++ }
         override fun onCursor(dx: Int, dy: Int, select: Boolean) { moves.append(if (dx > 0) "R" else if (dx < 0) "L" else if (dy > 0) "D" else "U") }
         override fun onToggleStyle() { Settings.update(context) { it.copy(style = if (it.style == Style.ORANGE) Style.WHITE else Style.ORANGE) } }
+        override fun onToggleHold() { Settings.update(context) { it.copy(holdForMore = !it.holdForMore) } }
         override fun wantsCaps() = caps
         override fun onSwipe(xs: FloatArray, ys: FloatArray, caps: Int) { swipes++ }
         override fun onSwipeProgress(xs: FloatArray, ys: FloatArray, caps: Int) { progress++ }
@@ -58,8 +59,8 @@ class KeyboardViewTest {
 
     @Before fun setUp() { context = RuntimeEnvironment.getApplication() }
 
-    private fun keyboard(style: Style = Style.ORANGE): KeyboardView {
-        Settings.write(context, Settings(style, Settings.Height.MEDIUM))
+    private fun keyboard(style: Style = Style.ORANGE, hold: Boolean = true): KeyboardView {
+        Settings.write(context, Settings(style, Settings.Height.MEDIUM, holdForMore = hold))
         val v = KeyboardView(context, host)
         // As the service does: settings changes reach the view while it shows.
         Settings.prefs(context).registerOnSharedPreferenceChangeListener(listener)
@@ -124,6 +125,16 @@ class KeyboardViewTest {
             tap(v, 3, 8.9f)                        // Sym
             shot(v, "${style.name.lowercase()}-symbols")
         }
+        shot(keyboard(hold = false), "orange-letters-no-hold")
+    }
+
+    @Test fun holdForMoreOff() {
+        val v = keyboard(hold = false)
+        val (x, y) = at(v, 0, 2.5f); val t = SystemClock.uptimeMillis()  // hold e: just e
+        touch(v, MotionEvent.ACTION_DOWN, x, y, t)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500))
+        touch(v, MotionEvent.ACTION_UP, x, y - 10, t + 650)
+        assertEquals("e", typed.toString())
     }
 
     @Test fun shotsOfStates() {
@@ -227,14 +238,22 @@ class KeyboardViewTest {
         assertEquals(true, v.measuredHeight > before)
     }
 
-    @Test fun holdOrangeSwitchesStyleAndHoldSpaceMovesTheCursor() {
+    @Test fun holdOrangeTogglesHoldGlobeSwitchesStyleAndHoldSpaceMovesTheCursor() {
         val v = keyboard()
         hold(v, 2, 0.5f, 700) { x, y, t -> touch(v, MotionEvent.ACTION_UP, x, y, t + 700) }
-        assertEquals(Style.WHITE, v.settings.style)
-        shot(v, "white-after-hold")
-        // The hold switched the style and did not also arm the orange key.
+        assertEquals(false, v.settings.holdForMore)
+        // The hold switched the setting and did not also arm the orange key.
         letter(v, 'e')
         assertEquals("e", typed.toString())
+        hold(v, 2, 0.5f, 700) { x, y, t -> touch(v, MotionEvent.ACTION_UP, x, y, t + 700) }
+        assertEquals(true, v.settings.holdForMore)
+
+        tap(v, 3, 8.9f)                            // Sym
+        hold(v, 2, 0.5f, 700) { x, y, t -> touch(v, MotionEvent.ACTION_UP, x, y, t + 700) }
+        assertEquals(Style.WHITE, v.settings.style)
+        assertEquals(0, picked)            // the hold did not also open the picker
+        tap(v, 3, 0.7f)                            // ABC
+        shot(v, "white-after-hold")
 
         typed.setLength(0)
         val step = 12 * context.resources.displayMetrics.density

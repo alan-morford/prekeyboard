@@ -2,7 +2,10 @@ package io.github.alan_morford.prekeyboard
 
 import android.app.Activity
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.res.ColorStateList
 import android.content.pm.PackageInstaller
 import android.graphics.Color
@@ -37,12 +40,6 @@ class UpdateActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // The installer's answer, after Android closed the popup: pass on its confirmation.
-        if (intent?.action == ACTION_STATUS) {
-            if (intent.getIntExtra(PackageInstaller.EXTRA_STATUS, 0) == PackageInstaller.STATUS_PENDING_USER_ACTION)
-                confirmation(intent)?.let { startActivity(it) }
-            finish(); return
-        }
         release = Updater.newer(this) ?: run { finish(); return }
         setTitle("Pre Keyboard ${release.version}")
 
@@ -84,6 +81,9 @@ class UpdateActivity : Activity() {
         })
         column.addView(buttons)
         setContentView(column)
+        val filter = IntentFilter(ACTION_STATUS)
+        if (Build.VERSION.SDK_INT >= 33) registerReceiver(statusReceiver, filter, RECEIVER_NOT_EXPORTED)
+        else registerReceiver(statusReceiver, filter)
     }
 
     private fun button(label: String, onClick: () -> Unit) = Button(this).apply {
@@ -137,10 +137,11 @@ class UpdateActivity : Activity() {
         val session = installer.openSession(id)
         try {
             // GitHub answers with a redirect to its file host, which this follows (https to https).
-            val conn = URL(url).openConnection() as HttpURLConnection
-            conn.connectTimeout = 15_000
-            conn.readTimeout = 30_000
-            conn.setRequestProperty("User-Agent", "PreKeyboard-Android")
+            val conn = Net.open(url) {
+                it.connectTimeout = 15_000
+                it.readTimeout = 30_000
+                it.setRequestProperty("User-Agent", "PreKeyboard-Android")
+            }
             try {
                 if (conn.responseCode != 200) throw RuntimeException("HTTP ${conn.responseCode}")
                 val total = conn.contentLength.toLong()
@@ -163,21 +164,36 @@ class UpdateActivity : Activity() {
                     session.fsync(out)
                 }
             } finally { conn.disconnect() }
-            val back = Intent(this, UpdateActivity::class.java).setAction(ACTION_STATUS)
+            // The answer comes back as a broadcast to this popup, not as an activity launch:
+            // since Android 15 a launch from a PendingIntent is blocked as a background start,
+            // which left the popup on "Installing…" with no confirmation ever shown.
+            val back = Intent(ACTION_STATUS).setPackage(packageName)
             val flags = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
-            session.commit(PendingIntent.getActivity(this, 0, back, flags).intentSender)
+            session.commit(PendingIntent.getBroadcast(this, 0, back, flags).intentSender)
         } catch (e: Exception) {
             session.abandon()
             throw e
         } finally { session.close() }
     }
 
+    private val statusReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) = installerAnswered(intent)
+    }
+
+    // Unregistered only when the popup goes for good: while Android's confirmation is on top,
+    // the popup is stopped but must still hear whether the install went through.
+    override fun onDestroy() {
+        try { unregisterReceiver(statusReceiver) } catch (_: IllegalArgumentException) {}
+        super.onDestroy()
+    }
+
     /** The installer's answer: confirm with the owner, done, or why not. */
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        if (intent.action != ACTION_STATUS) return
+    private fun installerAnswered(intent: Intent) {
         when (val code = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)) {
-            PackageInstaller.STATUS_PENDING_USER_ACTION -> confirmation(intent)?.let { startActivity(it) }
+            PackageInstaller.STATUS_PENDING_USER_ACTION -> confirmation(intent)?.let {
+                show("Confirm the update in Android's installer.")
+                startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
             PackageInstaller.STATUS_SUCCESS -> finish()
             else -> {
                 busy = false

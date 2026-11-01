@@ -53,7 +53,7 @@ class SetupActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
         column.addView(heading("Style"))
         column.addView(choices(Style.values().toList(), { if (it == Style.ORANGE) "Orange" else "White" },
             { Settings.read(this).style }) { v -> Settings.update(this) { it.copy(style = v) } })
-        column.addView(note("Or hold the orange key to switch."))
+        column.addView(note("Or hold the globe on the Sym page to switch."))
         column.addView(heading("Height"))
         column.addView(choices(Settings.Height.values().toList(), { it.label },
             { Settings.read(this).height }) { v -> Settings.update(this) { it.copy(height = v) } })
@@ -72,6 +72,10 @@ class SetupActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
             "Backspace straight after takes the whole word. Shows the suggestion bar too, with the " +
             "other guesses.",
             { Settings.read(this).swipe }) { v -> Settings.update(this) { it.copy(swipe = v) } })
+        column.addView(toggle("Hold for more", "Press and hold a key for its accents and extra " +
+            "symbols (é, ñ, curly quotes, £, ½…). Keys that have them show a small dot. Hold the " +
+            "orange key to switch it on or off from the keyboard.",
+            { Settings.read(this).holdForMore }) { v -> Settings.update(this) { it.copy(holdForMore = v) } })
 
         column.addView(heading("Updates"))
         column.addView(note("Version ${Updater.installedVersion(this)}. The keyboard looks for a new " +
@@ -128,7 +132,7 @@ class SetupActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
         super.onPause()
     }
 
-    /** The orange key's long press changes the style from the keyboard: show it here too. */
+    /** Long presses on the keyboard change the style and "Hold for more": show them here too. */
     override fun onSharedPreferenceChanged(prefs: SharedPreferences?, key: String?) = refreshers.forEach { it() }
 
     private fun heading(s: String) = TextView(this).apply {
