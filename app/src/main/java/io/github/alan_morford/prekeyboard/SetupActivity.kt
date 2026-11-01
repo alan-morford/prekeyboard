@@ -73,7 +73,12 @@ class SetupActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
             "other guesses.",
             { Settings.read(this).swipe }) { v -> Settings.update(this) { it.copy(swipe = v) } })
 
-        column.addView(EditText(this).apply {
+        column.addView(heading("Updates"))
+        column.addView(note("Version ${Updater.installedVersion(this)}. The keyboard looks for a new " +
+            "release once a day and says so above the keys; tap the notice to see what's new and install it."))
+        column.addView(wideButton("Check now") { checkForUpdate(it) })
+
+        val tryIt = EditText(this).apply {
             hint = "Try it here"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or
                 InputType.TYPE_TEXT_FLAG_AUTO_CORRECT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
@@ -82,7 +87,8 @@ class SetupActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = unit * 2 }
-        })
+        }
+        column.addView(tryIt)
 
         val scroll = ScrollView(this).apply {
             setBackgroundColor(Color.rgb(0x28, 0x2c, 0x2f))
@@ -96,9 +102,19 @@ class SetupActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
                 val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.ime())
                 v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
             }
+            // The keyboard came up (or changed height) for the try-it field: bring the field
+            // up above it, so what is typed can be seen.
+            if (tryIt.hasFocus()) v.post { scrollToTryIt(scroll, tryIt) }
             insets
         }
+        tryIt.setOnFocusChangeListener { _, focused -> if (focused) scroll.post { scrollToTryIt(scroll, tryIt) } }
         setContentView(scroll)
+    }
+
+    /** Scrolls until the bottom of [field] (the last thing on the screen) sits just above the keyboard. */
+    private fun scrollToTryIt(scroll: ScrollView, field: View) {
+        val visible = scroll.height - scroll.paddingTop - scroll.paddingBottom
+        scroll.smoothScrollTo(0, Math.max(0, field.bottom + unit - visible))
     }
 
     override fun onResume() {
@@ -173,9 +189,29 @@ class SetupActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
         return box
     }
 
-    private fun wideButton(label: String, onClick: () -> Unit) = Button(this).apply {
+    /** Asks GitHub now: the update popup if there is something newer, a word on the button if not. */
+    private fun checkForUpdate(button: Button) {
+        button.isEnabled = false
+        button.text = "Checking…"
+        Thread {
+            val r = Updater.checkNow(this)
+            runOnUiThread {
+                button.isEnabled = true
+                when {
+                    r == null -> button.text = "Couldn't reach GitHub. Check now"
+                    Updater.isNewer(Updater.installedVersion(this), r.version) -> {
+                        button.text = "Check now"
+                        startActivity(Intent(this, UpdateActivity::class.java))
+                    }
+                    else -> button.text = "Up to date. Check now"
+                }
+            }
+        }.apply { isDaemon = true }.start()
+    }
+
+    private fun wideButton(label: String, onClick: (Button) -> Unit) = Button(this).apply {
         text = label
-        setOnClickListener { onClick() }
+        setOnClickListener { onClick(this) }
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply { topMargin = unit / 2 }

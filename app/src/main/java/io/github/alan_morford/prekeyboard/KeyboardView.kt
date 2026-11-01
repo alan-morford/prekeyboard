@@ -49,6 +49,8 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         fun onSwipeProgress(xs: FloatArray, ys: FloatArray, caps: Int) {}
         /** The [i]th word in the suggestion bar was tapped: 0 left, 1 middle, 2 right. */
         fun onPick(i: Int) {}
+        /** The notice in the suggestion bar was tapped. */
+        fun onNotice() {}
     }
 
     var settings = Settings.read(context)
@@ -78,8 +80,9 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
     /** Room under the keys: a little of our own, plus a navigation bar drawn over us, if any. */
     private var navInset = 0
     private val bottomPad get() = 2 * dp + navInset
-    /** The suggestion bar, above the keys, when it is switched on. */
-    private val barHeight get() = if (settings.showsBar) Math.round(rowHeight * 0.72f).toFloat() else 0f
+    /** The suggestion bar, above the keys: when it is switched on, or there is a notice to show in it. */
+    private val barShown get() = settings.showsBar || notice != null
+    private val barHeight get() = if (barShown) Math.round(rowHeight * 0.72f).toFloat() else 0f
     private val keysHeight get() = barHeight + rowHeight * 4 + topBorder + bottomPad
 
     private val cellH get() = rowHeight * 0.85f
@@ -179,7 +182,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
     override fun onDraw(c: Canvas) {
         val top = keyboardTop().toFloat()
         painter.deck(c, RectF(0f, top + barHeight, width.toFloat(), height.toFloat()))
-        if (settings.showsBar) drawBar(c, RectF(0f, top, width.toFloat(), top + barHeight))
+        if (barShown) drawBar(c, RectF(0f, top, width.toFloat(), top + barHeight))
         if (page == Page.EMOJI) {
             emoji.draw(c, painter, style, emoji.pressed == EmojiPanel.BACK, emoji.pressed == EmojiPanel.ABC) { cv, s, r ->
                 functionLabel(cv, s, r)
@@ -235,9 +238,8 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
     private fun inset(r: RectF) = 2.5f * dp + r.width() * 0.08f
 
     /**
-     * A character key's printing, placed by its ink: a key with an alternate puts its letter
-     * in one bottom corner and the alternate in the top corner opposite; a key without one
-     * centres its glyph.
+     * A character key's printing: a key with an alternate puts it in one top corner and the
+     * letter low in the key, just off centre away from it; a key without one centres its glyph.
      */
     private fun drawCap(c: Canvas, key: Key, r: RectF) {
         val letter = if (page == Page.SYMBOLS) key.text else key.text.uppercase()
@@ -255,9 +257,20 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         text.textSize = size
         text.color = Color.WHITE
         text.alpha = if (alt != Alt.OFF) 89 else 255
-        text.getTextBounds(letter, 0, letter.length, ink)
-        val lx = if (altLeft) r.right - i - ink.right else r.left + i - ink.left
-        c.drawText(letter, lx, r.bottom - i - ink.bottom, text)
+        // Every letter sits on one baseline, taken from a flat-bottomed capital, so Q's tail
+        // hangs below the line instead of lifting the Q. As on the Pre, a letter is centred
+        // in its key by its advance (not its ink, which Q's tail widens), nudged a little
+        // away from its alternate. The "@0" key keeps the two side by side.
+        text.getTextBounds("H", 0, 1, ink)
+        val baseline = r.bottom - i - ink.bottom
+        val lx = if (key.altPos == AltPos.INLINE) {
+            text.getTextBounds(letter, 0, letter.length, ink)
+            r.left + i - ink.left
+        } else {
+            val nudge = r.width() * LETTER_NUDGE * (if (altLeft) 1 else -1)
+            r.centerX() + nudge - text.measureText(letter) / 2
+        }
+        c.drawText(letter, lx, baseline, text)
         text.alpha = 255
 
         // The alternate, in the top corner: its edge meets the inset, and it is centred on a
@@ -419,6 +432,21 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
     private var words = listOf("", "", "")
     private var barPressed = -1
 
+    /**
+     * A line across the whole bar ("Pre Keyboard 1.0.2 is available"), shown while there are
+     * no words to offer; tapping it tells [Host.onNotice]. With the bar switched off, the bar
+     * comes up for the notice alone.
+     */
+    var notice: String? = null
+        set(v) {
+            if (v == field) return
+            val relayout = (v == null) != (field == null) && !settings.showsBar
+            field = v
+            if (relayout) { painter.clear(); requestLayout() }
+            invalidate()
+        }
+    private val showingNotice get() = notice != null && words.all { it.isEmpty() }
+
     /** Three words, left to right; the middle one is the likeliest. "" leaves a place empty. */
     fun setSuggestions(w: List<String>) {
         val next = List(3) { w.getOrNull(it) ?: "" }
@@ -437,6 +465,14 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         text.textSize = size
         val fm = text.fontMetrics
         val baseline = r.centerY() - (fm.ascent + fm.descent) / 2
+        val n = notice
+        if (n != null && showingNotice) {
+            if (barPressed >= 0) { barPaint.color = BAR_PRESSED; c.drawRect(r, barPaint) }
+            text.color = Style.ORANGE.accent
+            text.textSize = fitted(n, size * 0.85f, r.width() - 24 * dp)
+            c.drawText(n, r.centerX() - text.measureText(n) / 2, baseline, text)
+            return
+        }
         for (i in 0..2) {
             val cell = RectF(r.left + i * cw, r.top, r.left + (i + 1) * cw, r.bottom)
             if (i == barPressed && words[i].isNotEmpty()) { barPaint.color = BAR_PRESSED; c.drawRect(cell, barPaint) }
@@ -455,7 +491,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
 
     private fun barCell(x: Float, y: Float): Int {
         val top = keyboardTop()
-        if (!settings.showsBar || y < top || y >= top + barHeight) return -1
+        if (!barShown || y < top || y >= top + barHeight) return -1
         return (x / (width / 3f)).toInt().coerceIn(0, 2)
     }
 
@@ -590,12 +626,13 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     barPressed = barCell(x, y)
-                    if (words[barPressed].isNotEmpty()) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    if (showingNotice || words[barPressed].isNotEmpty()) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                 }
                 MotionEvent.ACTION_UP -> {
                     val i = barPressed
                     barPressed = -1
-                    if (barCell(x, y) == i && words[i].isNotEmpty()) host.onPick(i)
+                    if (showingNotice) { if (barCell(x, y) >= 0) host.onNotice() }
+                    else if (barCell(x, y) == i && words[i].isNotEmpty()) host.onPick(i)
                 }
                 MotionEvent.ACTION_CANCEL -> barPressed = -1
             }
@@ -770,6 +807,8 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
 
         /** Prelude's cap height, as a fraction of the font size. */
         private const val CAP_HEIGHT = 0.72f
+        /** How far a letter sits from its key's centre, away from the alternate (off a Pre photo: E, H). */
+        private const val LETTER_NUDGE = 0.07f
 
         /**
          * Prelude, the Pre's own face, when the build found it (see README: its licence keeps

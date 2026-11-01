@@ -26,7 +26,7 @@ TouchPad keyboard. It shares no code with either.
 - **Suggestion bar**: three words above the keys, the likeliest in the middle in orange
 - **Autocorrect** for typos and for contractions (`dont` → `don't`), undone by the next
   backspace, and learning the words you keep
-- **Double-space period**
+- **Double-space period**, and a period that brings its own space
 - **Emoji**: every emoji your phone can draw, by category, with your recent ones first
 - **Accents** on a long press of a letter
 - **Cursor control**: hold the space bar and slide; with shift on, it selects
@@ -34,6 +34,7 @@ TouchPad keyboard. It shares no code with either.
 - Shift lights orange whenever the next letter will be a capital
 - Small, Medium and Large heights
 - Every setting takes effect at once, with the keyboard still on screen
+- **Updates itself**: it looks for a new release once a day and offers it above the keys
 - Built for Android 15, runs on Android 5.0 and later
 
 ![Swipe to type, with the suggestion bar](docs/swipe.png)
@@ -45,7 +46,12 @@ TouchPad keyboard. It shares no code with either.
   the next letter will be a capital. Hold the orange key to switch between the Orange and White
   styles.
 - **Sym** opens the digits and symbols. On that page, the **globe** asks which keyboard to use
-  and the **smiley** opens the emoji (hold it for the text emoticons, `:-)` and friends).
+  and the **smiley** opens the emoji (hold it for the text emoticons, `:-)` and friends). The
+  bottom row keeps its shape between the two pages, so no key moves under your thumb: ABC
+  where shift is, the smiley where `@` is, `…` where the period is, return where Sym is.
+- **Period**: it brings a space with it. Backspace straight after takes just the space; a
+  space typed out of habit isn't doubled; `?`, `,` or another period go against the word.
+  No space in numbers (`3.14`), web or email addresses, or fields that aren't for words.
 - **Emoji**: every emoji your phone can draw, by category, with your recent ones first.
   Scroll the grid, or tap a category along the bottom.
 - **Hold a letter** for its accents: slide to the one you want and let go.
@@ -53,10 +59,12 @@ TouchPad keyboard. It shares no code with either.
   at a time, up and down a line at a time. With shift on, it selects as it goes.
 - **Hold backspace** and it repeats, then starts taking whole words.
 - **Swipe** (when switched on): slide across the letters and lift at the end of the word. The
-  word goes in, spaced from the one before. While you swipe, the bar shows the word you would
+  word goes in with a space either side, so you can swipe or tap the next word straight away,
+  and a period lands on the word. While you swipe, the bar shows the word you would
   get if you lifted now, in orange; after, it offers the next likeliest
-  guesses, and tapping one swaps it in. Backspace straight after a swipe takes the whole word.
-  Taps still type letters as usual.
+  guesses, and tapping one swaps it in. Backspace straight after a swipe takes the whole word
+  and its space. Taps still type letters as usual, and the word before a swipe is corrected
+  as a space would correct it (a lone `i` becomes `I`). Swiping works in search boxes too.
 
 ## Settings
 
@@ -75,6 +83,10 @@ the keyboard on screen.
   in orange, is the likeliest - what the space bar would make of your word. On the left is the
   word as you typed it, when that differs; tap it to keep it, and it is never corrected again.
 - **Swipe to type** (off by default): see above. It brings the suggestion bar with it.
+- **Updates**: shows the version, with **Check now**. The keyboard itself looks for a new
+  release on GitHub once a day, when it comes up, and says so in the bar above the keys; tap
+  that for the release notes, then **Install** or **Later** (asked again a day later). The
+  first install asks you to let Pre Keyboard install apps.
 
 Swipe matching follows the location channel of Kristensson and Zhai's SHARK² (2004): the
 finger's path is compared, point for point, with each candidate word's path through its keys,

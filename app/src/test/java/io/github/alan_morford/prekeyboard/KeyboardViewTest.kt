@@ -121,7 +121,7 @@ class KeyboardViewTest {
         for (style in Style.values()) {
             val v = keyboard(style)
             shot(v, "${style.name.lowercase()}-letters")
-            tap(v, 3, 8.2f)                        // Sym
+            tap(v, 3, 8.9f)                        // Sym
             shot(v, "${style.name.lowercase()}-symbols")
         }
     }
@@ -168,8 +168,8 @@ class KeyboardViewTest {
 
         typed.setLength(0)
         tap(v, 2, 0.5f); tap(v, 2, 8.5f)                              // orange + comma
-        tap(v, 2, 0.5f); tap(v, 3, 2.98f)                             // orange + @: 0
-        tap(v, 3, 2.98f); tap(v, 3, 5f); tap(v, 3, 6.9f)              // @, space, .
+        tap(v, 2, 0.5f); tap(v, 3, 2.4f)                             // orange + @: 0
+        tap(v, 3, 2.4f); tap(v, 3, 5f); tap(v, 3, 7.6f)              // @, space, .
         assertEquals("_0@ .", typed.toString())
     }
 
@@ -205,7 +205,7 @@ class KeyboardViewTest {
 
     @Test fun emojiPageGlobeAndSettingsLive() {
         val v = keyboard()
-        tap(v, 3, 8.2f)                            // Sym
+        tap(v, 3, 8.9f)                            // Sym
         tap(v, 2, 0.5f)                            // globe: the picker, not the next keyboard
         assertEquals(1, picked)
         tap(v, 3, 2.2f)                            // the emoji key

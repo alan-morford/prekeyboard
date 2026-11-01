@@ -1,5 +1,6 @@
 package io.github.alan_morford.prekeyboard
 
+import android.content.Intent
 import android.content.SharedPreferences
 import android.inputmethodservice.InputMethodService
 import android.os.Handler
@@ -83,6 +84,19 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         view?.wordsAllowed = prose()
         view?.reset()
         refreshBar()
+        showUpdateNotice()
+        Updater.checkIfDue(this) { showUpdateNotice() }
+    }
+
+    // --- Updates ----------------------------------------------------------------------------
+
+    private fun showUpdateNotice() {
+        view?.notice = Updater.pending(this)?.let { "Pre Keyboard ${it.version} is available. Tap to see what's new." }
+    }
+
+    override fun onNotice() {
+        requestHideSelf(0)
+        startActivity(Intent(this, UpdateActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
     /** The Pre's keyboard never took over the screen. */
@@ -107,25 +121,36 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
     override fun onUpdateSelection(oldSelStart: Int, oldSelEnd: Int, newSelStart: Int, newSelEnd: Int,
                                    candidatesStart: Int, candidatesEnd: Int) {
         super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd)
+        // A selection, or the cursor taken elsewhere: the keyboard's last space is now ordinary.
+        if (newSelStart != newSelEnd) composer.forget()
         view?.updateCaps()
         refreshBar()
     }
 
     // --- What the field allows --------------------------------------------------------------
 
-    /** A field for words: not a password, an address or a URL, and not one that asked for no suggestions. */
+    /**
+     * A field for words: not a password, an address or a URL. Swiping and the suggestion bar
+     * work in it even when it asks for no suggestions: the Google search box asks that because
+     * it shows its own, and other keyboards still swipe there.
+     */
     private fun prose(): Boolean {
         val type = editor?.inputType ?: 0
         val variation = type and InputType.TYPE_MASK_VARIATION
-        return type and InputType.TYPE_MASK_CLASS == InputType.TYPE_CLASS_TEXT &&
-            variation !in NOT_PROSE && type and InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS == 0
+        return type and InputType.TYPE_MASK_CLASS == InputType.TYPE_CLASS_TEXT && variation !in NOT_PROSE
     }
 
-    /** The owner's toggles, less what this field rules out. */
+    /**
+     * The owner's toggles, less what this field rules out. A field that asked for no
+     * suggestions is never corrected behind the owner's back (a user name, a code); a word
+     * picked from the bar still is.
+     */
     private fun rules(): Composer.Rules {
         val s = view?.settings ?: Settings.read(this)
         val prose = prose()
-        return Composer.Rules(autocorrect = s.autocorrect && prose, doubleSpacePeriod = s.doubleSpacePeriod && prose)
+        val quiet = (editor?.inputType ?: 0) and InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS != 0
+        return Composer.Rules(autocorrect = s.autocorrect && prose && !quiet,
+            doubleSpacePeriod = s.doubleSpacePeriod && prose, prose = prose)
     }
 
     // --- The suggestion bar -----------------------------------------------------------------
@@ -141,7 +166,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         bar = listOf("", "", "")
         if (v.settings.showsBar && prose()) {
             // The cursor moved away from the swiped word: it is no longer the one to replace.
-            if (composer.swiped != null && composer.currentWord() != composer.swiped) composer.forget()
+            if (composer.swiped != null && !composer.swipedIsLast()) composer.forget()
             val sw = composer.swiped
             if (sw != null) {
                 val others = swipeGuesses.filter { it != sw }
@@ -204,7 +229,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         Log.d(TAG, "swipe: ${xs.size} points, ${SystemClock.uptimeMillis() - start} ms, $found")
         if (found.isEmpty()) { refreshBar(); return }
         swipeGuesses = found.map { cased(it, caps) }
-        composer.swipe(swipeGuesses[0])
+        composer.swipe(swipeGuesses[0], rules())
         refreshBar()
     }
 

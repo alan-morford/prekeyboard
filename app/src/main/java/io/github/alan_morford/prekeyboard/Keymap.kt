@@ -89,16 +89,18 @@ object Keymap {
             c(",", "_"),
             f(Kind.RETURN),
         ),
-        // The Pre's bottom row, inset by about a key at each end. Weights measured off a Pre;
-        // they sum to 10, so the columns above stay aligned.
+        // The Pre's bottom row, inset at each end; the keys' widths are measured off a Pre.
+        // The space bar is the Sym page's, the same width in the same place (3 to 7), so it
+        // never moves under the thumb when the page changes; the insets give up the room.
+        // The weights sum to 10, so the columns above stay aligned.
         listOf(
-            Slot(0.97f, shift, drawn = false),
+            Slot(0.39f, shift, drawn = false),
             Slot(1.43f, shift),
             c("@", "0", AltPos.INLINE, w = 1.18f),
-            Slot(2.75f, Key(Kind.SPACE, " ")),
+            Slot(4f, Key(Kind.SPACE, " ")),
             c(".", ext = ". ? • … ¿", w = 1.17f),
             Slot(1.48f, sym),
-            Slot(1.02f, sym, drawn = false),
+            Slot(0.35f, sym, drawn = false),
         ),
     )
 
@@ -120,14 +122,23 @@ object Keymap {
             listOf(f(Kind.GLOBE, 1.25f), Slot(0.25f, semi, drawn = false), Slot(1f, semi)) +
                 ":=+-'\"".map { s(it.toString()) } +
                 listOf(Slot(0.25f, back, drawn = false), Slot(1.25f, back)),
-            listOf(
-                f(Kind.SYM, 1.5f, "ABC"),
-                // Tap for the emoji page; hold for LuneOS's text emoticons.
-                Slot(1.5f, Key(Kind.EMOJI, extended = listOf(":-)", ";-)", ":-(", ":'(", ":-P", ":-O", "<3"))),
-                Slot(4f, Key(Kind.SPACE, " ")),
-                Slot(1.5f, Key(Kind.CHAR, "…", extended = listOf("•", "…", "±", "¬", "¦", "µ", "¤"))),
-                f(Kind.RETURN, 1.5f),
-            ),
+            // Key for key the letters page's bottom row (ABC where shift is, emoji where @ is,
+            // … where the period is, Return where Sym is), so nothing on it moves when the
+            // page changes.
+            run {
+                val abc = Key(Kind.SYM, label = "ABC")
+                val ret = Key(Kind.RETURN)
+                listOf(
+                    Slot(0.39f, abc, drawn = false),
+                    Slot(1.43f, abc),
+                    // Tap for the emoji page; hold for LuneOS's text emoticons.
+                    Slot(1.18f, Key(Kind.EMOJI, extended = listOf(":-)", ";-)", ":-(", ":'(", ":-P", ":-O", "<3"))),
+                    Slot(4f, Key(Kind.SPACE, " ")),
+                    Slot(1.17f, Key(Kind.CHAR, "…", extended = listOf("•", "…", "±", "¬", "¦", "µ", "¤"))),
+                    Slot(1.48f, ret),
+                    Slot(0.35f, ret, drawn = false),
+                )
+            },
         )
     }
 }
