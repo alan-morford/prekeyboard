@@ -129,7 +129,8 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
      * keyboard's window and report it as a caption bar, not a navigation bar: that counts too.
      */
     override fun onApplyWindowInsets(insets: WindowInsets): WindowInsets {
-        val nav = Math.max(barsOver(insets), imeNavBar())
+        dispatchedBars = barsOver(insets)
+        val nav = Math.max(dispatchedBars, imeNavBar())
         if (nav != navInset) { navInset = nav; requestLayout() }
         return super.onApplyWindowInsets(insets)
     }
@@ -153,7 +154,14 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         return 0
     }
 
-    private fun navOverlap(): Int = Math.max(barsOver(if (Build.VERSION.SDK_INT >= 30) rootWindowInsets else null), imeNavBar())
+    /**
+     * The bars over the keys as last dispatched to this view. Not [getRootWindowInsets]: that is
+     * the whole window's, and Samsung's keyboard window already stands its content above the
+     * navigation bar, so counting it there lifted the keys a bar's height too far.
+     */
+    private var dispatchedBars = 0
+
+    private fun navOverlap(): Int = Math.max(dispatchedBars, imeNavBar())
 
     private val watchNavBar = ViewTreeObserver.OnGlobalLayoutListener {
         val nav = navOverlap()
