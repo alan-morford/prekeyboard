@@ -102,6 +102,47 @@ class Corrector(lines: Sequence<String>) {
         return out.take(max)
     }
 
+    /**
+     * Other words [word] might have been meant as, for a word tapped in the text, best guess
+     * first: the commonest words a slip or two away (`ball` -> `bell`, `call`, `bull`), then
+     * longer words it begins. Never [word] itself.
+     */
+    fun alternatives(word: String, max: Int = 3): List<String> {
+        if (word.isEmpty() || word.length > MAX_LENGTH || !word[0].isLetter()) return emptyList()
+        val lower = word.lowercase()
+        val out = LinkedHashSet<String>()
+        fun add(w: String) { if (!w.equals(word, ignoreCase = true) && out.size < max) out += casedLike(word, w) }
+        CONTRACTIONS[lower]?.let { add(it) }
+        val one = HashMap<String, Float>()
+        edits(lower, 0f, one, full = true)
+        one.remove(lower)
+        // A word tapped to be fixed was most likely the wrong key or vowel, or a swipe that
+        // came out a near neighbour: the same length, and closeness counts for more than
+        // how common a word is.
+        val near = HashMap<String, Float>()
+        for ((s, cost) in one) near[s] = when {
+            s.length != lower.length -> cost + 0.6f
+            vowelSwap(s, lower) -> 0.4f      // ball, bell, bill, bull: said differently, swiped alike
+            else -> cost
+        }
+        for (w in pick(near, maxCost = 1.9f, minScore = 3, max + 1, weight = 2 * COST_WEIGHT)) add(w)
+        if (out.size < max && lower.length >= 4) {
+            val two = HashMap<String, Float>()
+            for ((s, c) in one) edits(s, c, two, full = false)
+            two.remove(lower)
+            for (w in pick(two, maxCost = 1.9f, minScore = 9, max + 1)) add(w)
+        }
+        for (w in completions(lower, max + 1)) add(w)
+        return out.toList()
+    }
+
+    /** [a] and [b] differ in one place only, a vowel for a vowel. */
+    private fun vowelSwap(a: String, b: String): Boolean {
+        var at = -1
+        for (i in a.indices) if (a[i] != b[i]) { if (at >= 0) return false; at = i }
+        return at >= 0 && a[at] in VOWELS && b[at] in VOWELS
+    }
+
     /** The commonest words that start with [prefix] and are longer than it. */
     private fun completions(prefix: String, max: Int): List<String> {
         var lo = 0; var hi = sorted.size
@@ -134,13 +175,14 @@ class Corrector(lines: Sequence<String>) {
     }
 
     /** The best known words among [cands]: common, and cheap to reach. Best first. */
-    private fun pick(cands: Map<String, Float>, maxCost: Float, minScore: Int, max: Int): List<String> {
+    private fun pick(cands: Map<String, Float>, maxCost: Float, minScore: Int, max: Int,
+                     weight: Float = COST_WEIGHT): List<String> {
         val found = ArrayList<Pair<Entry, Float>>()
         for ((s, cost) in cands) {
             if (cost > maxCost) continue
             val e = words[s] ?: continue
             if (e.score < minScore) continue
-            found += e to (e.score - COST_WEIGHT * cost)
+            found += e to (e.score - weight * cost)
         }
         return found.sortedByDescending { it.second }.take(max).map { it.first.word }
     }

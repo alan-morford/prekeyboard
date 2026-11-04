@@ -28,7 +28,11 @@ TouchPad keyboard. It shares no code with either.
 - **Next-word suggestions**: before you start a word, the bar offers the three likeliest next
   words (`I` → `don't`, `think`, `know`), learning the ones you use
 - **Your own words**: hold a word in the bar to add it to the dictionary
-- **Speech input**: hold the period (or tap the orange key, then the period) and talk
+- **Speech input**: hold the period and talk
+- **Paste**: copy something and a clipboard icon waits in the bar's right-hand place; tap it
+  to paste, or just start typing and it goes away
+- **Fix a word**: tap a word in the text and the bar offers what else it might be (`ball` →
+  `bell`, `bill`, `bull`); tap one and it takes the word's place
 - **Autocorrect** for typos and for contractions (`dont` → `don't`), undone by the next
   backspace, and learning the words you keep
 - **Double-space period**, and a period that brings its own space
@@ -63,7 +67,7 @@ TouchPad keyboard. It shares no code with either.
   space typed out of habit isn't doubled; `?`, `,` or another period go against the word.
   No space in numbers (`3.14`), web or email addresses, or fields that aren't for words.
   It sits in the column of I, K and M, with a microphone in its corner.
-- **Speech input**: hold the period, or tap the orange key and then the period. The
+- **Speech input**: hold the period (a tap is always just a period). The
   microphone lights orange and the bar says "Listening…"; the words go into the field as you
   say them. Tap the bar (or hold the period again) to stop; a pause stops it too, and typing
   any key does. The first time, Android asks to let Pre Keyboard use the microphone. It uses
@@ -109,7 +113,11 @@ the keyboard on screen.
   or hold it for **Add to dictionary?** (Yes keeps it from then on, as tapping it would).
   Before you start a word, the bar offers the three likeliest next words, from everyday
   English and from what you usually type after the word before (kept on the phone; not in
-  incognito fields).
+  incognito fields). Tap a word already in the text and the bar offers the nearest other
+  words, the likeliest in the middle; tap one to swap it in, and the word it replaced is
+  offered back in case. When something new is copied, a paste icon (a clipboard with a page)
+  takes the right-hand place until you tap it, which pastes, or start typing. Either way that
+  copy isn't offered again.
 - **Swipe to type** (off by default): see above. It brings the suggestion bar with it.
 - **Emoji suggestions** (off by default): the bar's right-hand place shows an emoji for the
   word, when there is one (`pizza` → 🍕, `love` → ❤️). Tap it to swap the word for the emoji.

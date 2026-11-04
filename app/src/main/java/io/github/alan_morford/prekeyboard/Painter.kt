@@ -116,7 +116,7 @@ class Painter(private val dp: Float) {
     private val left = poly(4, 32, 28, 10, 28, 24, 60, 24, 60, 40, 28, 40, 28, 54)
     private val ret = poly(46, 6, 60, 6, 60, 44, 28, 44, 28, 58, 4, 37, 28, 16, 28, 30, 46, 30)
 
-    enum class Icon { SHIFT, SHIFT_ON, SHIFT_LOCK, BACKSPACE, RETURN, GLOBE, EMOJI, CURSOR, MIC, GEAR }
+    enum class Icon { SHIFT, SHIFT_ON, SHIFT_LOCK, BACKSPACE, RETURN, GLOBE, EMOJI, CURSOR, MIC, GEAR, PASTE }
 
     /** Shift, when the next letter (or every letter) will be a capital: the Pre's orange, in either style. */
     private val shiftLit = Style.ORANGE.accent
@@ -172,6 +172,20 @@ class Painter(private val dp: Float) {
                 }
                 p.style = Paint.Style.STROKE; p.strokeWidth = 10f
                 c.drawCircle(32f, 32f, 15f, p)
+            }
+            // The bar's paste: a clipboard with a page on it, its corner turned down.
+            Icon.PASTE -> {
+                p.style = Paint.Style.STROKE; p.strokeWidth = 4f; p.strokeJoin = Paint.Join.ROUND
+                c.drawRoundRect(RectF(10f, 9f, 54f, 61f), 6f, 6f, p)
+                c.drawPath(Path().apply {
+                    moveTo(20f, 22f); lineTo(36f, 22f); lineTo(44f, 30f); lineTo(44f, 52f); lineTo(20f, 52f); close()
+                }, p)
+                c.drawPath(Path().apply { moveTo(36f, 22f); lineTo(36f, 30f); lineTo(44f, 30f) }, p)
+                p.strokeWidth = 3.5f; p.strokeCap = Paint.Cap.ROUND
+                c.drawLine(25f, 37f, 39f, 37f, p)
+                c.drawLine(25f, 44f, 35f, 44f, p)
+                p.style = Paint.Style.FILL
+                c.drawRoundRect(RectF(22f, 3f, 42f, 15f), 3f, 3f, p)
             }
         }
         c.restore()

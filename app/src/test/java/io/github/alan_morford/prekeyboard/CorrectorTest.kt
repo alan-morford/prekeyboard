@@ -56,4 +56,13 @@ class CorrectorTest {
         assertEquals(3, c.suggestions("th").size)
         assertEquals(emptyList<String>(), c.suggestions(""))
     }
+
+    @Test fun alternativesForATappedWord() {
+        val ball = c.alternatives("ball")
+        assertEquals(true, "bell" in ball)
+        assertEquals(false, "ball" in ball)
+        assertEquals(3, ball.size)
+        assertEquals(true, c.alternatives("Ball").all { it[0].isUpperCase() })
+        assertEquals("don't", c.alternatives("dont").first())
+    }
 }

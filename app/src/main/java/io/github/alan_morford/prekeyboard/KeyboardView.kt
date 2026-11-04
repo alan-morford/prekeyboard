@@ -17,6 +17,8 @@ import android.os.SystemClock
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
+import android.view.ViewTreeObserver
 import android.view.WindowInsets
 
 /**
@@ -63,6 +65,8 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         fun canAdd(word: String): Boolean = false
         /** The owner said yes to adding [word] to the dictionary. */
         fun onAddWord(word: String) {}
+        /** The paste icon in the bar was tapped. */
+        fun onPaste() {}
     }
 
     var settings = Settings.read(context)
@@ -114,6 +118,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
     fun keyboardTop(): Int = height - keysHeight.toInt()
 
     override fun onMeasure(widthSpec: Int, heightSpec: Int) {
+        navInset = navOverlap()
         setMeasuredDimension(MeasureSpec.getSize(widthSpec), headroom + keysHeight.toInt())
     }
 
@@ -124,11 +129,44 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
      * keyboard's window and report it as a caption bar, not a navigation bar: that counts too.
      */
     override fun onApplyWindowInsets(insets: WindowInsets): WindowInsets {
-        val nav = if (Build.VERSION.SDK_INT >= 30)
-            insets.getInsets(WindowInsets.Type.navigationBars() or WindowInsets.Type.captionBar()).bottom else 0
+        val nav = Math.max(barsOver(insets), imeNavBar())
         if (nav != navInset) { navInset = nav; requestLayout() }
         return super.onApplyWindowInsets(insets)
     }
+
+    private fun barsOver(insets: WindowInsets?): Int = if (Build.VERSION.SDK_INT >= 30 && insets != null)
+        insets.getInsets(WindowInsets.Type.navigationBars() or WindowInsets.Type.captionBar()).bottom else 0
+
+    /**
+     * Android shows and hides the keyboard's own navigation bar (InputMethodService's
+     * NavigationBarFrame, a sibling of the keyboard in its window) as the caption bar inset
+     * comes and goes, and those insets don't always reach this view: the bar was seen on a
+     * Pixel sitting over the keys till the keyboard was switched away and back. So the bar
+     * itself is looked at too, at every measure and whenever the window lays out.
+     */
+    private fun imeNavBar(): Int {
+        val decor = rootView as? ViewGroup ?: return 0
+        for (i in 0 until decor.childCount) {
+            val ch = decor.getChildAt(i)
+            if (ch.visibility == View.VISIBLE && ch.javaClass.name.endsWith("NavigationBarFrame")) return ch.height
+        }
+        return 0
+    }
+
+    private fun navOverlap(): Int = Math.max(barsOver(if (Build.VERSION.SDK_INT >= 30) rootWindowInsets else null), imeNavBar())
+
+    private val watchNavBar = ViewTreeObserver.OnGlobalLayoutListener {
+        val nav = navOverlap()
+        if (nav != navInset) { navInset = nav; requestLayout() }
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        viewTreeObserver.addOnGlobalLayoutListener(watchNavBar)
+        requestApplyInsets()
+    }
+
+
 
     // --- State ------------------------------------------------------------------------------
 
@@ -252,8 +290,9 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
     }
 
     /**
-     * The small icon in a key's top right corner, white and the size of a printed alternate,
-     * as the symbols are printed. The microphone turns the Pre's orange while listening.
+     * The small icon in a key's top right corner, the size of a printed alternate and in the
+     * style's colour, like the digits. While listening, the microphone sits in a disc of that
+     * colour.
      */
     private fun cornerIcon(c: Canvas, corner: Corner, r: RectF) {
         val size = letterSize() * 0.62f
@@ -261,8 +300,12 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         val cx = r.right - i - size / 2
         val cy = r.top + i + size / 2 - size * 0.08f
         when (corner) {
-            Corner.MIC -> painter.icon(c, Painter.Icon.MIC, cx, cy, size, if (listening) Style.ORANGE.accent else Color.WHITE)
-            Corner.GEAR -> painter.icon(c, Painter.Icon.GEAR, cx, cy, size * 0.9f, Color.WHITE)
+            Corner.MIC -> if (listening) {
+                dotPaint.color = style.accent
+                c.drawCircle(cx, cy, size * 0.62f, dotPaint)
+                painter.icon(c, Painter.Icon.MIC, cx, cy, size * 0.8f, Color.rgb(0x16, 0x18, 0x1A))
+            } else painter.icon(c, Painter.Icon.MIC, cx, cy, size, style.accent)
+            Corner.GEAR -> painter.icon(c, Painter.Icon.GEAR, cx, cy, size * 0.9f, style.accent)
         }
     }
 
@@ -388,7 +431,6 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
     private fun drawPreview(c: Canvas) {
         val z = preview ?: return
         if (extended != null) return
-        if (z.key.corner == Corner.MIC && alt != Alt.OFF) return
         val s = output(z.key)
         val w = Math.max(z.rect.width() * 1.25f, rowHeight * 0.95f)
         val h = rowHeight * 1.15f
@@ -518,7 +560,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
      */
     var notice: String? = null
         set(v) { if (v != field) barChange { field = v } }
-    private val showingNotice get() = notice != null && words.all { it.isEmpty() } && voiceLine == null
+    private val showingNotice get() = notice != null && words.all { it.isEmpty() } && voiceLine == null && !pasteOffered
 
     /** Speech input is on: the period's microphone is lit. */
     var listening = false
@@ -530,6 +572,15 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
      */
     var voiceLine: String? = null
         set(v) { if (v != field) barChange { field = v } }
+
+    /**
+     * Something new is on the clipboard: the bar's right-hand place shows a paste icon in
+     * place of a word, till it is tapped or the owner starts typing.
+     */
+    var pasteOffered = false
+        set(v) { if (v != field) { field = v; invalidate() } }
+    /** The bar's [i]th place holds the paste icon. */
+    private fun pasteAt(i: Int) = i == 2 && pasteOffered
 
     /** Three words, left to right; the middle one is the likeliest. "" leaves a place empty. */
     fun setSuggestions(w: List<String>) {
@@ -566,10 +617,14 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         }
         for (i in 0..2) {
             val cell = RectF(r.left + i * cw, r.top, r.left + (i + 1) * cw, r.bottom)
-            if (i == barPressed && words[i].isNotEmpty()) { barPaint.color = BAR_PRESSED; c.drawRect(cell, barPaint) }
+            if (i == barPressed && (words[i].isNotEmpty() || pasteAt(i))) { barPaint.color = BAR_PRESSED; c.drawRect(cell, barPaint) }
             if (i > 0) {
                 barPaint.color = BAR_RULE
                 c.drawRect(cell.left, r.top + r.height() * 0.25f, cell.left + Math.max(1f, dp), r.bottom - r.height() * 0.25f, barPaint)
+            }
+            if (pasteAt(i)) {
+                painter.icon(c, Painter.Icon.PASTE, cell.centerX(), cell.centerY(), r.height() * 0.56f, Color.WHITE)
+                continue
             }
             val w = words[i]
             if (w.isEmpty()) continue
@@ -595,7 +650,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
 
     private val barHold = Runnable {
         val i = barPressed
-        if (i < 0 || showingNotice || voiceLine != null) return@Runnable
+        if (i < 0 || showingNotice || voiceLine != null || pasteAt(i)) return@Runnable
         val w = words[i]
         if (w.isEmpty() || !host.canAdd(w)) return@Runnable
         barPressed = -1
@@ -840,7 +895,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     barPressed = barCell(x, y)
-                    if (voiceLine != null || showingNotice || words[barPressed].isNotEmpty()) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    if (voiceLine != null || showingNotice || words[barPressed].isNotEmpty() || pasteAt(barPressed)) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                     handler.postDelayed(barHold, HOLD_FOR_ADD)
                 }
                 MotionEvent.ACTION_UP -> {
@@ -849,6 +904,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
                     barPressed = -1
                     if (voiceLine != null) { if (listening && barCell(x, y) >= 0) host.onVoice() }
                     else if (showingNotice) { if (barCell(x, y) >= 0) host.onNotice() }
+                    else if (barCell(x, y) == i && pasteAt(i)) host.onPaste()
                     else if (barCell(x, y) == i && words[i].isNotEmpty()) host.onPick(i)
                 }
                 MotionEvent.ACTION_CANCEL -> { handler.removeCallbacks(barHold); barPressed = -1 }
@@ -954,10 +1010,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
             Kind.RETURN -> host.onEnter()
             Kind.GLOBE -> host.onPickKeyboard()
             Kind.SPACE -> host.onText(" ")
-            Kind.CHAR -> if (key.corner == Corner.MIC && alt != Alt.OFF) {
-                if (alt == Alt.ONCE) { alt = Alt.OFF; lastAltTap = NEVER }
-                host.onVoice()
-            } else type(output(key), usedAlt = alt != Alt.OFF && key.alt != null)
+            Kind.CHAR -> type(output(key), usedAlt = alt != Alt.OFF && key.alt != null)
         }
     }
 
@@ -993,6 +1046,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
     }
 
     override fun onDetachedFromWindow() {
+        viewTreeObserver.removeOnGlobalLayoutListener(watchNavBar)
         super.onDetachedFromWindow()
         handler.removeCallbacksAndMessages(null)
         painter.clear()

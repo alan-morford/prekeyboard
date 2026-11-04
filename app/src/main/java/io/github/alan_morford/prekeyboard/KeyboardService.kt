@@ -1,6 +1,7 @@
 package io.github.alan_morford.prekeyboard
 
 import android.Manifest
+import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.SharedPreferences
@@ -62,6 +63,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
     override fun onCreate() {
         super.onCreate()
         Settings.prefs(this).registerOnSharedPreferenceChangeListener(this)
+        clipboard.addPrimaryClipChangedListener(clipChanged)
         composer.onLearned = { Settings.addLearned(this, it); decoder?.add(it, LEARNED_SCORE) }
         // The dictionary is 88,000 words: read it off the main thread, and correct nothing until
         // it is in.
@@ -87,6 +89,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
 
     override fun onDestroy() {
         Settings.prefs(this).unregisterOnSharedPreferenceChangeListener(this)
+        clipboard.removePrimaryClipChangedListener(clipChanged)
         voice.stop(now = true)
         saveNextWords()
         live.quitSafely()
@@ -107,10 +110,14 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         super.onStartInputView(info, restarting)
         editor = info
         composer.reset()
+        // Where the cursor is as the field opens, the owner put it (or left it): a word it
+        // touches gets alternatives, as a word tapped would.
+        tapped = true
         view?.apply(Settings.read(this))
         view?.wordsAllowed = prose()
         view?.reset()
         refreshBar()
+        offerPaste()
         showUpdateNotice()
         Updater.checkIfDue(this) { showUpdateNotice() }
         // Back from allowing the microphone: start listening, as was asked for.
@@ -135,6 +142,65 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         val text = nw.save()
         val file = File(filesDir, NEXT_WORDS_FILE)
         Thread { runCatching { File(file.path + ".new").apply { writeText(text) }.renameTo(file) } }.start()
+    }
+
+    // --- Paste ------------------------------------------------------------------------------
+
+    private val clipboard by lazy { getSystemService(CLIPBOARD_SERVICE) as ClipboardManager }
+    // Copied or cut, even the same text again: a new offer.
+    private val clipChanged = ClipboardManager.OnPrimaryClipChangedListener {
+        clipPrefs.edit().remove(CLIP_DONE).apply()
+        offerPaste()
+    }
+
+    /**
+     * Which copy is on the clipboard: when it was made, from Android 8 (so copying or cutting
+     * the same words again counts as new while the keyboard wasn't running), else a hash of
+     * the text. Never the text itself.
+     */
+    private fun clipKey(text: String): String {
+        val stamp = if (Build.VERSION.SDK_INT >= 26) runCatching { clipboard.primaryClipDescription?.timestamp }.getOrNull() else null
+        return if (stamp != null && stamp > 0) "t$stamp" else "h${text.hashCode()}"
+    }
+
+    /** What is on the clipboard, as text; null when nothing (or nothing that reads as text). */
+    private fun clipText(): String? = runCatching {
+        val clip = clipboard.primaryClip ?: return null
+        if (clip.itemCount == 0) return null
+        val item = clip.getItemAt(0)
+        (item.text ?: item.coerceToText(this))?.toString()?.takeIf { it.isNotEmpty() }
+    }.getOrNull()
+
+    /**
+     * The clipboard is offered while it holds something not yet pasted or typed past: the
+     * paste icon stays in the bar till it is tapped or the owner starts typing. What was
+     * offered and passed over is remembered (see [clipKey]), so it isn't offered
+     * again, even after the keyboard restarts; a new copy or cut always is.
+     */
+    private fun offerPaste() {
+        val v = view ?: return
+        val t = clipText()
+        v.pasteOffered = t != null && clipKey(t) != clipPrefs.getString(CLIP_DONE, null)
+    }
+
+    private val clipPrefs by lazy { getSharedPreferences("clip", MODE_PRIVATE) }
+
+    /** The owner started typing, or pasted: the clipboard's offer is over. */
+    private fun passOverPaste() {
+        val v = view ?: return
+        if (!v.pasteOffered) return
+        v.pasteOffered = false
+        clipText()?.let { clipPrefs.edit().putString(CLIP_DONE, clipKey(it)).apply() }
+    }
+
+    override fun onPaste() {
+        val t = clipText()
+        passOverPaste()
+        if (t == null) return
+        ownEdit()
+        composer.forget()
+        currentInputConnection?.commitText(t, 1)
+        refreshBar()
     }
 
     // --- Updates ----------------------------------------------------------------------------
@@ -172,6 +238,10 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd)
         // A selection, or the cursor taken elsewhere: the keyboard's last space is now ordinary.
         if (newSelStart != newSelEnd) composer.forget()
+        // The cursor moved, and not by anything the keyboard did: the owner tapped the text.
+        // Tapped on a word, the bar offers what else it might have been.
+        if (newSelStart != newSelEnd) tapped = false
+        else if (newSelStart != oldSelStart && SystemClock.uptimeMillis() - ownEditAt > OWN_EDIT_MS) tapped = true
         view?.updateCaps()
         refreshBar()
     }
@@ -213,6 +283,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         val v = view ?: return
         // Whatever is still being worked out for the bar is out of date now.
         val gen = ++barGeneration
+        barWord = null
         // While backspace is down, every deletion would look the word up again: wait till it
         // lets go. The bar stays as it was for a single tap, and empties once it repeats.
         if (deleting) {
@@ -222,6 +293,22 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         if (!v.settings.showsBar || !prose()) { show(emptyList(), verbatim = false, emoji = false); return }
         // The cursor moved away from the swiped word: it is no longer the one to replace.
         if (composer.swiped != null && !composer.swipedIsLast()) composer.forget()
+        val at = wordAtCursor()
+        val c0 = composer.corrector
+        // A word tapped on, or the cursor inside one: other words it might have been.
+        if (at != null && c0 != null && (tapped || at.after.isNotEmpty())) {
+            suggestHandler.post {
+                if (gen != barGeneration) return@post
+                val alt = c0.alternatives(at.word)
+                main.post {
+                    if (gen != barGeneration) return@post
+                    barWord = at
+                    show(listOf(alt.getOrElse(1) { "" }, alt.getOrElse(0) { "" }, alt.getOrElse(2) { "" }),
+                        verbatim = false, emoji = false)
+                }
+            }
+            return
+        }
         val sw = composer.swiped
         val emojiOn = v.settings.emojiSuggestions
         if (sw != null) {
@@ -256,6 +343,40 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
     private fun withEmoji(words: List<String>, verbatim: Boolean, emojiOn: Boolean) {
         val e = if (emojiOn && words[1].isNotEmpty()) emojiWords?.forWord(words[1]) else null
         if (e != null) show(listOf(words[0], words[1], e), verbatim, emoji = true) else show(words, verbatim, emoji = false)
+    }
+
+    /** A word in the text around the cursor: the part before it and the part after. */
+    private class WordAt(val before: String, val after: String) { val word get() = before + after }
+
+    /** The word the cursor is in or touching, when it is a plain word standing on its own. */
+    private fun wordAtCursor(): WordAt? {
+        val ic = currentInputConnection ?: return null
+        val b = ic.getTextBeforeCursor(MAX_TAPPED + 1, 0)?.toString() ?: return null
+        val a = ic.getTextAfterCursor(MAX_TAPPED + 1, 0)?.toString() ?: return null
+        fun part(ch: Char) = ch.isLetter() || ch == '\''
+        var i = b.length
+        while (i > 0 && part(b[i - 1])) i--
+        var j = 0
+        while (j < a.length && part(a[j])) j++
+        if (i == b.length && j == 0) return null
+        if (i > 0 && (b[i - 1].isLetterOrDigit() || b[i - 1] in "@#_/.-")) return null
+        if (i == 0 && b.length > MAX_TAPPED) return null
+        if (j < a.length && (a[j].isDigit() || a[j] in "@_/")) return null
+        if (j == a.length && a.length > MAX_TAPPED) return null
+        val w = WordAt(b.substring(i), a.substring(0, j))
+        return w.takeIf { it.word.trim('\'').isNotEmpty() && it.word[0].isLetter() }
+    }
+
+    /** The cursor moved by the owner's hand, not the keyboard's: [refreshBar] looks at the word there. */
+    private var tapped = false
+    /** When the keyboard last changed the text, to tell its own cursor moves from the owner's. */
+    private var ownEditAt = 0L
+    /** The tapped word the bar is offering others for, to swap when one is picked. */
+    private var barWord: WordAt? = null
+
+    private fun ownEdit() {
+        ownEditAt = SystemClock.uptimeMillis()
+        tapped = false
     }
 
     private fun show(words: List<String>, verbatim: Boolean, emoji: Boolean) {
@@ -300,10 +421,32 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
 
     override fun onPick(i: Int) {
         val word = bar.getOrNull(i)?.takeIf { it.isNotEmpty() } ?: return
+        val at = barWord
+        if (at != null) { replaceTapped(at, word); return }
+        ownEdit()
+        passOverPaste()
         val learn = i == 0 && barVerbatim && composer.corrector?.isKnown(word) == false
         composer.pick(word, learn)
         if (i == 2 && barEmoji) Settings.addRecentEmoji(this, word)
         learnPair()
+        refreshBar()
+    }
+
+    /**
+     * A word picked for a tapped one takes its place, the cursor at its end. The bar goes on
+     * offering others for it, the word it replaced among them, in case it wasn't the one.
+     */
+    private fun replaceTapped(at: WordAt, word: String) {
+        val ic = currentInputConnection ?: return
+        val now = wordAtCursor()
+        if (now == null || now.before != at.before || now.after != at.after) { refreshBar(); return }
+        ownEditAt = SystemClock.uptimeMillis()
+        ic.beginBatchEdit()
+        ic.deleteSurroundingText(at.before.length, at.after.length)
+        ic.commitText(word, 1)
+        ic.endBatchEdit()
+        tapped = true
+        composer.forget()
         refreshBar()
     }
 
@@ -365,6 +508,8 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         val found = d.decode(xs, ys, layout)
         Log.d(TAG, "swipe: ${xs.size} points, ${SystemClock.uptimeMillis() - start} ms, $found")
         if (found.isEmpty()) { refreshBar(); return }
+        ownEdit()
+        passOverPaste()
         swipeGuesses = found.map { cased(it, caps) }
         composer.swipe(swipeGuesses[0], rules())
         learnPair()
@@ -381,12 +526,15 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
 
     override fun onText(text: String) {
         if (voice.on) voice.stop(now = true)
+        ownEdit()
+        passOverPaste()
         composer.type(text, rules())
         if (text == " " || (text.length == 1 && text[0] in ".,?!:;")) learnPair()
     }
 
     override fun onBackspace(word: Boolean) {
         if (voice.on) voice.stop(now = true)
+        ownEdit()
         deletes++
         if (!word && composer.backspace()) return
         val ic = currentInputConnection ?: return
@@ -400,6 +548,8 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
 
     override fun onEnter() {
         if (voice.on) voice.stop(now = true)
+        ownEdit()
+        passOverPaste()
         composer.beforeEnter(rules())
         val info = editor
         val options = info?.imeOptions ?: 0
@@ -418,6 +568,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
 
     override fun onCursor(dx: Int, dy: Int, select: Boolean) {
         composer.forget()
+        ownEdit()
         val code = when {
             dx > 0 -> KeyEvent.KEYCODE_DPAD_RIGHT
             dx < 0 -> KeyEvent.KEYCODE_DPAD_LEFT
@@ -462,12 +613,15 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
                 if (voiceComposing) { ic.setComposingText("", 1); ic.finishComposingText(); voiceComposing = false }
                 return
             }
+            ownEdit()
+            passOverPaste()
             if (!voiceComposing) { voiceStart(); composer.forget(); voiceComposing = true }
             ic.setComposingText(voiceText(text), 1)
         }
 
         override fun final(text: String) {
             val ic = currentInputConnection ?: return
+            ownEdit()
             if (!voiceComposing) { voiceStart(); composer.forget() }
             ic.commitText(voiceText(text), 1)
             voiceComposing = false
@@ -528,6 +682,11 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         private const val TAG = "PreKeyboard"
         /** A word the owner kept: as likely, to the swipe decoder, as a fairly common word. */
         private const val LEARNED_SCORE = 10
+        /** The longest word looked at around a tapped cursor. */
+        private const val MAX_TAPPED = 32
+        /** A cursor move this soon after the keyboard changed the text is the keyboard's own. */
+        private const val OWN_EDIT_MS = 400L
+        private const val CLIP_DONE = "passed"
         private const val NEXT_WORDS_FILE = "next_words_mine.txt"
         /** EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING (API 26): an incognito field. */
         private const val NO_LEARNING = 0x1000000
