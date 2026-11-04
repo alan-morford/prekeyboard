@@ -1,6 +1,8 @@
 package io.github.alan_morford.prekeyboard
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.SharedPreferences
 import android.inputmethodservice.InputMethodService
 import android.graphics.Paint
@@ -15,6 +17,7 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
+import java.io.File
 
 /**
  * The Android side of the keyboard. [KeyboardView] decides what was pressed; [Composer] decides
@@ -49,6 +52,12 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
     /** The bar's right-hand place holds an emoji for the word, not a word. */
     private var barEmoji = false
     private var emojiWords: EmojiWords? = null
+    private var nextWords: NextWords? = null
+    /** Backspace is down: the bar waits till it lets go, so deleting stays quick. */
+    private var deleting = false
+    /** The last pair of words learned, so one finished word isn't counted twice. */
+    private var lastPair: Pair<String, String>? = null
+    private val voice: Voice by lazy { Voice(this, voiceOut) }
 
     override fun onCreate() {
         super.onCreate()
@@ -70,18 +79,24 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
             val ew = app.assets.open("emoji_words.txt").bufferedReader(Charsets.UTF_8).useLines { lines ->
                 EmojiWords(lines) { e -> drawable?.contains(e) ?: EmojiPanel.canDraw(paint, e) }
             }
-            main.post { composer.corrector = c; decoder = d; emojiWords = ew; refreshBar() }
+            val nw = app.assets.open("next_words.txt").bufferedReader(Charsets.UTF_8).useLines { NextWords(it) }
+            runCatching { File(app.filesDir, NEXT_WORDS_FILE).takeIf { it.exists() }?.useLines { nw.load(it) } }
+            main.post { composer.corrector = c; decoder = d; emojiWords = ew; nextWords = nw; refreshBar() }
         }.apply { name = "dictionary"; isDaemon = true }.start()
     }
 
     override fun onDestroy() {
         Settings.prefs(this).unregisterOnSharedPreferenceChangeListener(this)
+        voice.stop(now = true)
+        saveNextWords()
         live.quitSafely()
+        suggestThread.quitSafely()
         super.onDestroy()
     }
 
     /** A setting changed - in the setup screen, or by long-pressing the orange key or globe: show it now. */
     override fun onSharedPreferenceChanged(prefs: SharedPreferences?, key: String?) {
+        if (key == Settings.VOICE_PENDING) return
         view?.apply(Settings.read(this))
         refreshBar()
     }
@@ -98,6 +113,28 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         refreshBar()
         showUpdateNotice()
         Updater.checkIfDue(this) { showUpdateNotice() }
+        // Back from allowing the microphone: start listening, as was asked for.
+        val prefs = Settings.prefs(this)
+        if (prefs.getBoolean(Settings.VOICE_PENDING, false)) {
+            prefs.edit().remove(Settings.VOICE_PENDING).apply()
+            main.post { if (!voice.on) onVoice() }
+        }
+    }
+
+    override fun onFinishInputView(finishingInput: Boolean) {
+        voice.stop(now = true)
+        deleting = false
+        saveNextWords()
+        super.onFinishInputView(finishingInput)
+    }
+
+    /** What the owner types after what, kept on a thread of its own. */
+    private fun saveNextWords() {
+        val nw = nextWords ?: return
+        if (!nw.dirty) return
+        val text = nw.save()
+        val file = File(filesDir, NEXT_WORDS_FILE)
+        Thread { runCatching { File(file.path + ".new").apply { writeText(text) }.renameTo(file) } }.start()
     }
 
     // --- Updates ----------------------------------------------------------------------------
@@ -174,35 +211,91 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
      */
     private fun refreshBar() {
         val v = view ?: return
-        barVerbatim = false
-        barEmoji = false
-        bar = listOf("", "", "")
-        if (v.settings.showsBar && prose()) {
-            // The cursor moved away from the swiped word: it is no longer the one to replace.
-            if (composer.swiped != null && !composer.swipedIsLast()) composer.forget()
-            val sw = composer.swiped
-            if (sw != null) {
-                val others = swipeGuesses.filter { it != sw }
-                bar = listOf(others.getOrElse(0) { "" }, sw, others.getOrElse(1) { "" })
-            } else {
-                val typed = composer.currentWord()
-                val c = composer.corrector
-                if (typed.isNotEmpty() && c != null) {
-                    val list = c.suggestions(typed)
-                    val best = list.firstOrNull() ?: typed
-                    val others = list.filter { it != best && it != typed }
-                    bar = if (best != typed) {
-                        barVerbatim = true
-                        listOf(typed, best, others.getOrElse(0) { "" })
-                    } else listOf(others.getOrElse(0) { "" }, best, others.getOrElse(1) { "" })
-                }
-            }
-            // An emoji for the middle word, in place of the third.
-            if (v.settings.emojiSuggestions && bar[1].isNotEmpty()) {
-                emojiWords?.forWord(bar[1])?.let { e -> bar = listOf(bar[0], bar[1], e); barEmoji = true }
+        // Whatever is still being worked out for the bar is out of date now.
+        val gen = ++barGeneration
+        // While backspace is down, every deletion would look the word up again: wait till it
+        // lets go. The bar stays as it was for a single tap, and empties once it repeats.
+        if (deleting) {
+            if (deletes > 1) show(emptyList(), verbatim = false, emoji = false)
+            return
+        }
+        if (!v.settings.showsBar || !prose()) { show(emptyList(), verbatim = false, emoji = false); return }
+        // The cursor moved away from the swiped word: it is no longer the one to replace.
+        if (composer.swiped != null && !composer.swipedIsLast()) composer.forget()
+        val sw = composer.swiped
+        val emojiOn = v.settings.emojiSuggestions
+        if (sw != null) {
+            val others = swipeGuesses.filter { it != sw }
+            withEmoji(listOf(others.getOrElse(0) { "" }, sw, others.getOrElse(1) { "" }), false, emojiOn)
+            return
+        }
+        val typed = composer.currentWord()
+        val c = composer.corrector
+        if (c == null) { show(emptyList(), verbatim = false, emoji = false); return }
+        if (typed.isEmpty()) { show(predict() ?: emptyList(), verbatim = false, emoji = false); return }
+        // Looking a word up can take a good part of a second on an old tablet: do it on a
+        // thread of its own, so typing never waits for it. The bar keeps what it shows till then.
+        suggestHandler.post {
+            if (gen != barGeneration) return@post
+            val list = c.suggestions(typed)
+            val best = list.firstOrNull() ?: typed
+            val others = list.filter { it != best && it != typed }
+            val verbatim = best != typed
+            val words = if (verbatim) listOf(typed, best, others.getOrElse(0) { "" })
+                else listOf(others.getOrElse(0) { "" }, best, others.getOrElse(1) { "" })
+            val e = if (emojiOn && words[1].isNotEmpty()) emojiWords?.forWord(words[1]) else null
+            main.post {
+                if (gen != barGeneration) return@post
+                if (e != null) show(listOf(words[0], words[1], e), verbatim, emoji = true)
+                else show(words, verbatim, emoji = false)
             }
         }
-        v.setSuggestions(bar)
+    }
+
+    /** The bar's words, with an emoji for the middle one in the right-hand place when there is one. */
+    private fun withEmoji(words: List<String>, verbatim: Boolean, emojiOn: Boolean) {
+        val e = if (emojiOn && words[1].isNotEmpty()) emojiWords?.forWord(words[1]) else null
+        if (e != null) show(listOf(words[0], words[1], e), verbatim, emoji = true) else show(words, verbatim, emoji = false)
+    }
+
+    private fun show(words: List<String>, verbatim: Boolean, emoji: Boolean) {
+        bar = List(3) { words.getOrElse(it) { "" } }
+        barVerbatim = verbatim
+        barEmoji = emoji
+        view?.setSuggestions(bar)
+    }
+
+    private val suggestThread = HandlerThread("suggest").apply { start() }
+    private val suggestHandler = Handler(suggestThread.looper)
+    @Volatile private var barGeneration = 0
+    /** Deletions since backspace went down. */
+    private var deletes = 0
+
+    /**
+     * Before a word is typed: the three likeliest next words, the likeliest in the middle,
+     * with a capital where the field wants one. Null when there is nothing to go on.
+     */
+    private fun predict(): List<String>? {
+        val nw = nextWords ?: return null
+        val c = composer.corrector ?: return null
+        val ctx = composer.nextContext() ?: return null
+        val found = nw.predict(ctx) { c.isKnown(it) }
+        if (found.isEmpty()) return null
+        val caps = wantsCaps()
+        val w = found.map { if (caps) it.replaceFirstChar { ch -> ch.uppercaseChar() } else it }
+        return listOf(w.getOrElse(1) { "" }, w[0], w.getOrElse(2) { "" })
+    }
+
+    /** A word was just finished: remember what it followed, so it can be offered there next time. */
+    private fun learnPair() {
+        val nw = nextWords ?: return
+        val c = composer.corrector ?: return
+        if (!prose() || (editor?.imeOptions ?: 0) and NO_LEARNING != 0) return
+        val (ctx, word) = composer.finishedPair() ?: return
+        val spelt = c.spelling(word) ?: return
+        if (ctx to spelt == lastPair) return
+        lastPair = ctx to spelt
+        nw.learn(ctx, spelt)
     }
 
     override fun onPick(i: Int) {
@@ -210,7 +303,33 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         val learn = i == 0 && barVerbatim && composer.corrector?.isKnown(word) == false
         composer.pick(word, learn)
         if (i == 2 && barEmoji) Settings.addRecentEmoji(this, word)
+        learnPair()
         refreshBar()
+    }
+
+    /** A word held in the bar can be added when it is a word (letters) the dictionary lacks. */
+    override fun canAdd(word: String): Boolean {
+        val c = composer.corrector ?: return false
+        return word.isNotEmpty() && word.all { it.isLetter() || it == '\'' } && word[0].isLetter() && !c.isKnown(word)
+    }
+
+    override fun onAddWord(word: String) {
+        composer.corrector?.learn(word)
+        Settings.addLearned(this, word)
+        decoder?.add(word.lowercase(), LEARNED_SCORE)
+        refreshBar()
+    }
+
+    override fun onBackspaceHeld(held: Boolean) {
+        deleting = held
+        deletes = 0
+        if (!held) refreshBar() else barGeneration++
+    }
+
+    override fun onOpenApp() {
+        requestHideSelf(0)
+        startActivity(Intent(this, SetupActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED))
     }
 
     /**
@@ -248,6 +367,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         if (found.isEmpty()) { refreshBar(); return }
         swipeGuesses = found.map { cased(it, caps) }
         composer.swipe(swipeGuesses[0], rules())
+        learnPair()
         refreshBar()
     }
 
@@ -259,9 +379,15 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
 
     // --- What the keyboard reports ----------------------------------------------------------
 
-    override fun onText(text: String) = composer.type(text, rules())
+    override fun onText(text: String) {
+        if (voice.on) voice.stop(now = true)
+        composer.type(text, rules())
+        if (text == " " || (text.length == 1 && text[0] in ".,?!:;")) learnPair()
+    }
 
     override fun onBackspace(word: Boolean) {
+        if (voice.on) voice.stop(now = true)
+        deletes++
         if (!word && composer.backspace()) return
         val ic = currentInputConnection ?: return
         if (!word) { sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL); return }
@@ -273,6 +399,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
     }
 
     override fun onEnter() {
+        if (voice.on) voice.stop(now = true)
         composer.beforeEnter(rules())
         val info = editor
         val options = info?.imeOptions ?: 0
@@ -309,6 +436,88 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
 
     override fun onToggleHold() = Settings.update(this) { it.copy(holdForMore = !it.holdForMore) }
 
+    // --- Speech input ------------------------------------------------------------------------
+
+    /** Where the words being heard begin: a space goes in front when they follow a word. */
+    private var voicePrefix = ""
+    private var voiceCaps = false
+    private var voiceComposing = false
+
+    /** Works out how the next thing said joins on to the text before it. */
+    private fun voiceStart() {
+        val before = currentInputConnection?.getTextBeforeCursor(1, 0)?.toString() ?: ""
+        voicePrefix = if (before.isEmpty() || before[0].isWhitespace() || before[0] in "([{\"'“‘") "" else " "
+        voiceCaps = wantsCaps()
+    }
+
+    private fun voiceText(t: String): String {
+        val s = t.trim()
+        return voicePrefix + if (voiceCaps) s.replaceFirstChar { it.uppercaseChar() } else s
+    }
+
+    private val voiceOut: Voice.Out = object : Voice.Out {
+        override fun partial(text: String) {
+            val ic = currentInputConnection ?: return
+            if (text.isEmpty()) {
+                if (voiceComposing) { ic.setComposingText("", 1); ic.finishComposingText(); voiceComposing = false }
+                return
+            }
+            if (!voiceComposing) { voiceStart(); composer.forget(); voiceComposing = true }
+            ic.setComposingText(voiceText(text), 1)
+        }
+
+        override fun final(text: String) {
+            val ic = currentInputConnection ?: return
+            if (!voiceComposing) { voiceStart(); composer.forget() }
+            ic.commitText(voiceText(text), 1)
+            voiceComposing = false
+        }
+
+        override fun finishing() {
+            view?.listening = false
+            view?.voiceLine = null
+        }
+
+        override fun state(listening: Boolean, problem: String?) {
+            if (!listening && voiceComposing) { currentInputConnection?.finishComposingText(); voiceComposing = false }
+            view?.listening = listening
+            view?.voiceLine = if (listening) "Listening\u2026 tap here to stop" else problem
+            if (!listening && problem != null) main.postDelayed({ if (!voice.on) view?.voiceLine = null }, 2500)
+            refreshBar()
+        }
+    }
+
+    /**
+     * The period held, or tapped after the orange key: speech input on or off. The
+     * microphone is asked for the first time; with no recogniser on the device, a voice
+     * keyboard (Google voice typing, say) is switched to instead, if there is one.
+     */
+    override fun onVoice() {
+        if (voice.on) { voice.stop(); return }
+        if (!voice.available()) {
+            if (!switchToVoiceKeyboard()) view?.voiceLine = "No speech input on this device"
+            main.postDelayed({ if (!voice.on) view?.voiceLine = null }, 2500)
+            return
+        }
+        if (Build.VERSION.SDK_INT >= 23 && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            startActivity(Intent(this, MicActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            return
+        }
+        voice.start()
+    }
+
+    private fun switchToVoiceKeyboard(): Boolean {
+        val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+        for (imi in imm.enabledInputMethodList) {
+            if (imi.packageName == packageName) continue
+            val sub = imm.getEnabledInputMethodSubtypeList(imi, true).firstOrNull { it.mode == "voice" } ?: continue
+            if (Build.VERSION.SDK_INT >= 28) switchInputMethod(imi.id, sub)
+            else @Suppress("DEPRECATION") imm.setInputMethodAndSubtype(window.window!!.attributes.token, imi.id, sub)
+            return true
+        }
+        return false
+    }
+
     override fun wantsCaps(): Boolean {
         val info = editor ?: return false
         if (info.inputType and InputType.TYPE_MASK_CLASS != InputType.TYPE_CLASS_TEXT) return false
@@ -319,6 +528,9 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         private const val TAG = "PreKeyboard"
         /** A word the owner kept: as likely, to the swipe decoder, as a fairly common word. */
         private const val LEARNED_SCORE = 10
+        private const val NEXT_WORDS_FILE = "next_words_mine.txt"
+        /** EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING (API 26): an incognito field. */
+        private const val NO_LEARNING = 0x1000000
         private val NOT_PROSE = setOf(
             InputType.TYPE_TEXT_VARIATION_PASSWORD, InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,
             InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD, InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,

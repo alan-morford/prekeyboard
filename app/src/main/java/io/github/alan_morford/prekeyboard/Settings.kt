@@ -27,6 +27,8 @@ data class Settings(
 
     companion object {
         const val PREFS = "prekeyboard"
+        /** Set when the microphone was just allowed: the keyboard starts listening when it is back. */
+        const val VOICE_PENDING = "voicePending"
 
         fun prefs(context: Context): SharedPreferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 

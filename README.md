@@ -25,6 +25,10 @@ TouchPad keyboard. It shares no code with either.
   guesses one tap away
 - **Suggestion bar**: three words above the keys, the likeliest in the middle in orange, and
   if you like, an emoji for the word on the right (`pizza` → 🍕)
+- **Next-word suggestions**: before you start a word, the bar offers the three likeliest next
+  words (`I` → `don't`, `think`, `know`), learning the ones you use
+- **Your own words**: hold a word in the bar to add it to the dictionary
+- **Speech input**: hold the period (or tap the orange key, then the period) and talk
 - **Autocorrect** for typos and for contractions (`dont` → `don't`), undone by the next
   backspace, and learning the words you keep
 - **Double-space period**, and a period that brings its own space
@@ -32,7 +36,7 @@ TouchPad keyboard. It shares no code with either.
 - **Hold for more**: accents and extra symbols on a long press, each such key marked with a
   dot (switch it on in the app, or hold the orange key)
 - **Cursor control**: hold the space bar and slide; with shift on, it selects
-- The **globe** asks which keyboard to use
+- The **globe** asks which keyboard to use; hold Return on the Sym page to open the app
 - Shift lights orange whenever the next letter will be a capital
 - Small, Medium and Large heights
 - Every setting takes effect at once, with the keyboard still on screen
@@ -54,10 +58,16 @@ TouchPad keyboard. It shares no code with either.
   **smiley** opens the emoji (with Hold for more on, hold it for the text emoticons, `:-)` and
   friends). The bottom row keeps its shape between the two pages, so no key moves under your
   thumb: ABC where shift is, the smiley where `@` is, `—` where the period is, return where
-  Sym is.
+  Sym is. Hold that return (the one with the gear) to open the Pre Keyboard app.
 - **Period**: it brings a space with it. Backspace straight after takes just the space; a
   space typed out of habit isn't doubled; `?`, `,` or another period go against the word.
   No space in numbers (`3.14`), web or email addresses, or fields that aren't for words.
+  It sits in the column of I, K and M, with a microphone in its corner.
+- **Speech input**: hold the period, or tap the orange key and then the period. The
+  microphone lights orange and the bar says "Listening…"; the words go into the field as you
+  say them. Tap the bar (or hold the period again) to stop; a pause stops it too, and typing
+  any key does. The first time, Android asks to let Pre Keyboard use the microphone. It uses
+  the phone's own speech recogniser (Google's, on most phones).
 - **Punctuation after a space**: typed a space, then decided on a comma? `, . ? ! : ;` typed
   straight after the space go against the word and the space moves after them (`word ,` →
   `word, `).
@@ -68,7 +78,10 @@ TouchPad keyboard. It shares no code with either.
   them carry a small dot in the style's colour.
 - **Hold the space bar** and slide: the cursor follows your finger, left and right a character
   at a time, up and down a line at a time. With shift on, it selects as it goes.
-- **Hold backspace** and it repeats, then starts taking whole words.
+- **Hold backspace** and it repeats, then starts taking whole words. The suggestion bar waits
+  while it does, so deleting never slows down.
+- **The comma**, with Hold for more on, holds `… • ¿` (the period's list, before the period
+  became speech input).
 - **Swipe** (when switched on): slide across the letters and lift at the end of the word. The
   word goes in with a space either side, so you can swipe or tap the next word straight away,
   and a period lands on the word. While you swipe, the bar shows the word you would
@@ -92,7 +105,11 @@ the keyboard on screen.
 - **Double-space period** (on by default): two quick spaces after a word type `. `.
 - **Suggestion bar** (off by default): three words above the keys as you type. The middle one,
   in orange, is the likeliest - what the space bar would make of your word. On the left is the
-  word as you typed it, when that differs; tap it to keep it, and it is never corrected again.
+  word as you typed it, when that differs; tap it to keep it, and it is never corrected again,
+  or hold it for **Add to dictionary?** (Yes keeps it from then on, as tapping it would).
+  Before you start a word, the bar offers the three likeliest next words, from everyday
+  English and from what you usually type after the word before (kept on the phone; not in
+  incognito fields).
 - **Swipe to type** (off by default): see above. It brings the suggestion bar with it.
 - **Emoji suggestions** (off by default): the bar's right-hand place shows an emoji for the
   word, when there is one (`pizza` → 🍕, `love` → ❤️). Tap it to swap the word for the emoji.
@@ -147,12 +164,15 @@ python3 tools/build_dictionary.py <scowl>/final en_50k.txt app/src/main/assets/d
 python3 tools/build_emoji.py emoji-test.txt app/src/main/assets/emoji.txt
 python3 tools/build_emoji_words.py annotations/en.xml annotationsDerived/en.xml \
     app/src/main/assets/emoji.txt app/src/main/assets/dictionary.txt app/src/main/assets/emoji_words.txt
+python3 tools/build_next_words.py eng_sentences.tsv.bz2 app/src/main/assets/dictionary.txt \
+    app/src/main/assets/next_words.txt
 ```
 
 (SCOWL from http://wordlist.aspell.net/, `en_50k.txt` from
 [FrequencyWords](https://github.com/hermitdave/FrequencyWords), and `emoji-test.txt` from
 https://unicode.org/Public/emoji/; the two `en.xml` from
-[CLDR](https://github.com/unicode-org/cldr), `common/annotations` and `common/annotationsDerived`.)
+[CLDR](https://github.com/unicode-org/cldr), `common/annotations` and `common/annotationsDerived`;
+`eng_sentences.tsv.bz2` from https://downloads.tatoeba.org/exports/per_language/eng/.)
 
 ## The typeface
 
@@ -169,5 +189,5 @@ An APK built that way contains the font, so keep it to yourself.
 
 ## Licence
 
-Apache 2.0 - see [LICENSE](LICENSE). The word list is CC BY-SA 4.0 and the emoji lists are under
-the Unicode License; see [NOTICE](NOTICE).
+Apache 2.0 - see [LICENSE](LICENSE). The word list is CC BY-SA 4.0, the next-word list CC BY
+2.0 FR and the emoji lists are under the Unicode License; see [NOTICE](NOTICE).

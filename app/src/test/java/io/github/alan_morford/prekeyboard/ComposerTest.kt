@@ -199,4 +199,34 @@ class ComposerTest {
         type("mail@exa")
         assertEquals("", composer.currentWord())
     }
+
+    @Test fun whatTheNextWordFollows() {
+        assertEquals(NextWords.START, composer.nextContext())
+        type("I want ")
+        assertEquals("want", composer.nextContext())
+        assertEquals(NextWords.START to "I", null.let { text.setLength(0); text.append("I "); composer.finishedPair() })
+        text.setLength(0); text.append("I want")
+        assertEquals(null, composer.nextContext())             // a word being typed
+        text.setLength(0); text.append("Hi there. ")
+        assertEquals(NextWords.START, composer.nextContext())
+        assertEquals("hi" to "there", composer.finishedPair())
+        text.setLength(0); text.append("Well, ")
+        assertEquals(NextWords.COMMA, composer.nextContext())
+        text.setLength(0); text.append("see www.site.com ")
+        assertEquals(null, composer.nextContext())
+        assertEquals(null, composer.finishedPair())
+        text.setLength(0); text.append("I want")
+        assertEquals(null, composer.finishedPair())            // not finished yet
+    }
+
+    @Test fun nextWords() {
+        val nw = File("src/main/assets/next_words.txt").bufferedReader().useLines { NextWords(it) }
+        assertEquals("to", nw.predict("want").first())
+        assertEquals(true, "I" in nw.predict(NextWords.START))
+        // The owner's habit, twice over, comes first.
+        nw.learn("want", "pizza"); assertEquals(false, nw.predict("want").first() == "pizza")
+        nw.learn("want", "pizza"); assertEquals("pizza", nw.predict("want").first())
+        val again = NextWords(emptySequence()).apply { load(nw.save().lineSequence()) }
+        assertEquals(listOf("pizza"), again.predict("want"))
+    }
 }

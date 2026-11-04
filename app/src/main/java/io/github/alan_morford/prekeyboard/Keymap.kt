@@ -15,6 +15,9 @@ package io.github.alan_morford.prekeyboard
 
 enum class Kind { CHAR, SHIFT, BACKSPACE, RETURN, ORANGE, SYM, SPACE, GLOBE, EMOJI }
 
+/** A small icon printed in a key's top right corner, for what holding the key does. */
+enum class Corner { MIC, GEAR }
+
 /** Which top corner a key's printed alternate sits in; the letter takes the bottom corner opposite. */
 enum class AltPos { LEFT, RIGHT, INLINE }
 
@@ -31,6 +34,8 @@ class Key(
     val accent: Boolean = false,
     /** A label for a function key ("Sym", "ABC"). */
     val label: String? = null,
+    /** Printed in the top right: the period's microphone (hold, or orange key then tap: speech), Return's gear. */
+    val corner: Corner? = null,
 )
 
 /**
@@ -86,20 +91,22 @@ object Keymap {
             c("b", "#"),
             c("n", "?", ext = "n ñ ń ň"),
             c("m", ";", ext = "m µ"),
-            c(",", "_"),
+            // The comma holds what the period used to, now that holding the period is speech.
+            c(",", "_", ext = ", … • ¿"),
             f(Kind.RETURN),
         ),
         // The Pre's bottom row, inset at each end; the keys' widths are measured off a Pre.
         // The space bar is the Sym page's, the same width in the same place (3 to 7), so it
         // never moves under the thumb when the page changes; the insets give up the room.
-        // The weights sum to 10, so the columns above stay aligned.
+        // The weights sum to 10, so the columns above stay aligned. The period is exactly the
+        // column of I, K and M above it, with the microphone printed in its corner.
         listOf(
             Slot(0.39f, shift, drawn = false),
             Slot(1.43f, shift),
             c("@", "0", AltPos.INLINE, w = 1.18f),
             Slot(4f, Key(Kind.SPACE, " ")),
-            c(".", ext = ". ? • … ¿", w = 1.17f),
-            Slot(1.48f, sym),
+            Slot(1f, Key(Kind.CHAR, ".", corner = Corner.MIC)),
+            Slot(1.65f, sym),
             Slot(0.35f, sym, drawn = false),
         ),
     )
@@ -156,15 +163,16 @@ object Keymap {
             // the page changes.
             run {
                 val abc = Key(Kind.SYM, label = "ABC")
-                val ret = Key(Kind.RETURN)
+                // Hold Return here for the Pre Keyboard app.
+                val ret = Key(Kind.RETURN, corner = Corner.GEAR)
                 listOf(
                     Slot(0.39f, abc, drawn = false),
                     Slot(1.43f, abc),
                     // Tap for the emoji page; hold for LuneOS's text emoticons.
                     Slot(1.18f, Key(Kind.EMOJI, extended = listOf(":-)", ";-)", ":-(", ":'(", ":-P", ":-O", "<3"))),
                     Slot(4f, Key(Kind.SPACE, " ")),
-                    Slot(1.17f, Key(Kind.CHAR, "—", extended = listOf("—", "–", "¬"))),
-                    Slot(1.48f, ret),
+                    Slot(1f, Key(Kind.CHAR, "—", extended = listOf("—", "–", "¬"))),
+                    Slot(1.65f, ret),
                     Slot(0.35f, ret, drawn = false),
                 )
             },

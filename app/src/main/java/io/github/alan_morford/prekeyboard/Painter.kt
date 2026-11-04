@@ -116,18 +116,18 @@ class Painter(private val dp: Float) {
     private val left = poly(4, 32, 28, 10, 28, 24, 60, 24, 60, 40, 28, 40, 28, 54)
     private val ret = poly(46, 6, 60, 6, 60, 44, 28, 44, 28, 58, 4, 37, 28, 16, 28, 30, 46, 30)
 
-    enum class Icon { SHIFT, SHIFT_ON, SHIFT_LOCK, BACKSPACE, RETURN, GLOBE, EMOJI, CURSOR }
+    enum class Icon { SHIFT, SHIFT_ON, SHIFT_LOCK, BACKSPACE, RETURN, GLOBE, EMOJI, CURSOR, MIC, GEAR }
 
     /** Shift, when the next letter (or every letter) will be a capital: the Pre's orange, in either style. */
     private val shiftLit = Style.ORANGE.accent
 
-    /** Draws an icon [size] px square, centred on ([cx], [cy]). */
-    fun icon(c: Canvas, icon: Icon, cx: Float, cy: Float, size: Float) {
+    /** Draws an icon [size] px square, centred on ([cx], [cy]); [color] overrides its usual one. */
+    fun icon(c: Canvas, icon: Icon, cx: Float, cy: Float, size: Float, color: Int? = null) {
         val p = Paint(Paint.ANTI_ALIAS_FLAG)
         c.save()
         c.translate(Math.round(cx - size / 2).toFloat(), Math.round(cy - size / 2).toFloat())
         c.scale(size / 64f, size / 64f)
-        p.color = if (icon == Icon.SHIFT_ON || icon == Icon.SHIFT_LOCK) shiftLit else Color.WHITE
+        p.color = color ?: if (icon == Icon.SHIFT_ON || icon == Icon.SHIFT_LOCK) shiftLit else Color.WHITE
         when (icon) {
             Icon.SHIFT, Icon.SHIFT_ON -> c.drawPath(up, p)
             Icon.SHIFT_LOCK -> { c.drawPath(up, p); c.drawRect(18f, 54f, 46f, 59f, p) }
@@ -154,6 +154,24 @@ class Painter(private val dp: Float) {
                 c.drawPath(poly(4, 32, 16, 22, 16, 42), p); c.drawPath(poly(60, 32, 48, 22, 48, 42), p)
                 c.drawPath(poly(32, 4, 22, 16, 42, 16), p); c.drawPath(poly(32, 60, 22, 48, 42, 48), p)
                 c.drawRect(15f, 30f, 49f, 34f, p); c.drawRect(30f, 15f, 34f, 49f, p)
+            }
+            // The period's corner: speech input.
+            Icon.MIC -> {
+                c.drawRoundRect(RectF(22f, 2f, 42f, 38f), 10f, 10f, p)
+                p.style = Paint.Style.STROKE; p.strokeWidth = 5f; p.strokeCap = Paint.Cap.ROUND
+                c.drawArc(RectF(13f, 16f, 51f, 48f), 0f, 180f, false, p)
+                c.drawLine(32f, 48f, 32f, 58f, p)
+                c.drawLine(21f, 60f, 43f, 60f, p)
+            }
+            // Return's corner on the Sym page: the app's settings.
+            Icon.GEAR -> {
+                for (i in 0 until 8) {
+                    c.save(); c.rotate(i * 45f, 32f, 32f)
+                    c.drawRoundRect(RectF(26f, 3f, 38f, 16f), 2f, 2f, p)
+                    c.restore()
+                }
+                p.style = Paint.Style.STROKE; p.strokeWidth = 10f
+                c.drawCircle(32f, 32f, 15f, p)
             }
         }
         c.restore()

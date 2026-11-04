@@ -250,6 +250,54 @@ class Composer(private val field: Field, private val clock: () -> Long) {
         return before.substring(i)
     }
 
+    /**
+     * What the next word follows, for guessing it before it is typed: the word before the
+     * cursor in lower case, [NextWords.START] at the start of the text or a sentence, or
+     * [NextWords.COMMA] after a comma. Null when the cursor isn't after a space (a word is
+     * being typed, or something is glued on), or what is before it isn't a plain word.
+     */
+    fun nextContext(): String? {
+        val after = field.after(1)
+        if (after.isNotEmpty() && !after[0].isWhitespace()) return null
+        val before = field.before(MAX_WORD + 2).toString()
+        if (before.isNotEmpty() && !before.last().isWhitespace()) return null
+        return contextOf(before)
+    }
+
+    /**
+     * The word just finished (a space or sentence punctuation typed after it) and what it
+     * followed, for learning what the owner types after what. Null when there is none.
+     */
+    fun finishedPair(): Pair<String, String>? {
+        val before = field.before(2 * MAX_WORD + 4).toString()
+        val end = before.trimEnd { it.isWhitespace() || it in SENTENCE }
+        if (end.length == before.length) return null
+        var i = end.length
+        while (i > 0 && (end[i - 1].isLetter() || end[i - 1] == '\'')) i--
+        val word = end.substring(i).trim('\'')
+        if (word.isEmpty() || (i > 0 && !end[i - 1].isWhitespace() && end[i - 1] !in OPENERS)) return null
+        // Only a word that ended the whole text before it is known to have run to its start.
+        if (i == 0 && before.length >= 2 * MAX_WORD + 4) return null
+        val ctx = contextOf(end.substring(0, i)) ?: return null
+        return ctx to word
+    }
+
+    /** The context the text [before] ends in (see [nextContext]); [before] may end in spaces. */
+    private fun contextOf(before: String): String? {
+        val t = before.trimEnd()
+        if (t.isEmpty()) return if (before.length < MAX_WORD) NextWords.START else null
+        if (before.length > t.length && '\n' in before.substring(t.length)) return NextWords.START
+        val last = t.last()
+        if (last in ".!?") return NextWords.START
+        if (last == ',') return NextWords.COMMA
+        if (!last.isLetter() && last != '\'') return null
+        var i = t.length
+        while (i > 0 && (t[i - 1].isLetter() || t[i - 1] == '\'')) i--
+        if (i > 0 && !t[i - 1].isWhitespace() && t[i - 1] !in OPENERS) return null
+        if (i == 0 && t.length > MAX_WORD) return null
+        return t.substring(i).trim('\'').lowercase().ifEmpty { null }
+    }
+
     private fun correctWord(separator: String): Correction? {
         val c = corrector ?: return null
         val before = field.before(MAX_WORD + 1)

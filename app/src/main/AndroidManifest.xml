@@ -4,6 +4,14 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Installing that release over this one; Android asks the owner once, at the first install. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Speech input: hold the period, or the orange key then the period. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Android 11 and later hide other apps' speech recognisers unless asked for by name. -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
     <application
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
@@ -33,6 +41,11 @@
             android:label="@string/app_name"
             android:theme="@android:style/Theme.DeviceDefault.Dialog"
             android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:excludeFromRecents="true" />
+        <!-- Asks for the microphone the first time speech input is used. -->
+        <activity android:name=".MicActivity" android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
             android:taskAffinity=""
             android:excludeFromRecents="true" />
     </application>

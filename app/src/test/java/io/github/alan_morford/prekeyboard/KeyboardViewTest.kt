@@ -49,9 +49,18 @@ class KeyboardViewTest {
         override fun onSwipe(xs: FloatArray, ys: FloatArray, caps: Int) { swipes++ }
         override fun onSwipeProgress(xs: FloatArray, ys: FloatArray, caps: Int) { progress++ }
         override fun onPick(i: Int) { picks += i }
+        override fun onVoice() { voices++ }
+        override fun onOpenApp() { opened++ }
+        override fun onBackspaceHeld(held: Boolean) { heldEvents += held }
+        override fun canAdd(word: String) = word == "zorp"
+        override fun onAddWord(word: String) { added += word }
     }
     private lateinit var context: Context
 
+    private var voices = 0
+    private var opened = 0
+    private val heldEvents = ArrayList<Boolean>()
+    private val added = ArrayList<String>()
     private var listening: KeyboardView? = null
     private val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
         listening?.apply(Settings.read(context))
@@ -307,5 +316,67 @@ class KeyboardViewTest {
         touch(v, MotionEvent.ACTION_DOWN, qx, qy, time + 200); touch(v, MotionEvent.ACTION_UP, qx + 3, qy, time + 230)
         assertEquals("q", typed.toString())
         Settings.update(context) { it.copy(swipe = false) }
+    }
+
+    @Test fun periodSpeaksSymReturnOpensTheAppAndHeldBackspaceSaysSo() {
+        val v = keyboard()
+        hold(v, 3, 7.5f, 600) { x, y, t -> touch(v, MotionEvent.ACTION_UP, x, y, t + 600) }
+        assertEquals(1, voices)
+        assertEquals("", typed.toString())        // a held period types nothing
+        tap(v, 2, 0.5f); tap(v, 3, 7.5f)            // orange, then the period: speech too
+        assertEquals(2, voices)
+        assertEquals("", typed.toString())
+        tap(v, 3, 7.5f)                            // the orange key was spent: a plain period
+        assertEquals(".", typed.toString())
+        v.listening = true; v.voiceLine = "Listening\u2026 tap here to stop"
+        shot(v, "orange-listening")
+        v.listening = false; v.voiceLine = null
+
+        tap(v, 3, 8.9f)                            // Sym
+        shot(v, "orange-symbols-gear")
+        hold(v, 3, 8.9f, 700) { x, y, t -> touch(v, MotionEvent.ACTION_UP, x, y, t + 700) }
+        assertEquals(1, opened)
+        assertEquals(".", typed.toString())        // the hold did not also send Return
+        tap(v, 3, 0.7f)                            // ABC
+
+        "abc".forEach { letter(v, it) }
+        hold(v, 1, 9.5f, 1000) { x, y, t -> touch(v, MotionEvent.ACTION_UP, x, y, t + 1000) }
+        assertEquals(listOf(true, false), heldEvents)
+    }
+
+    @Test fun holdingAnUnknownWordInTheBarOffersToAddIt() {
+        val v = keyboard()
+        Settings.update(context) { it.copy(suggestions = true) }
+        v.measure(View.MeasureSpec.makeMeasureSpec(v.width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+        v.layout(0, 0, v.measuredWidth, v.measuredHeight)
+        v.setSuggestions(listOf("zorp", "zoo", "zip"))
+        val barY = v.keyboardTop() + 10f
+        val t = SystemClock.uptimeMillis()
+        // A known word held: nothing to offer, and letting go picks it as a tap would.
+        touch(v, MotionEvent.ACTION_DOWN, v.width * 0.5f, barY, t)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(700))
+        touch(v, MotionEvent.ACTION_UP, v.width * 0.5f, barY, t + 700)
+        assertEquals(listOf(1), picks)
+        // The word as typed, held: the popup, and letting go picks nothing.
+        touch(v, MotionEvent.ACTION_DOWN, v.width / 6f, barY, t + 800)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(700))
+        touch(v, MotionEvent.ACTION_UP, v.width / 6f, barY, t + 1500)
+        assertEquals(listOf(1), picks)
+        shot(v, "orange-add-word")
+        // Cancel closes it; a key tapped after is a key again.
+        touch(v, MotionEvent.ACTION_DOWN, v.askNo.centerX(), v.askNo.centerY(), t + 1600)
+        touch(v, MotionEvent.ACTION_UP, v.askNo.centerX(), v.askNo.centerY(), t + 1650)
+        assertEquals(emptyList<String>(), added)
+        letter(v, 'q')
+        assertEquals("q", typed.toString())
+        // Again, and Yes.
+        touch(v, MotionEvent.ACTION_DOWN, v.width / 6f, barY, t + 2000)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(700))
+        touch(v, MotionEvent.ACTION_UP, v.width / 6f, barY, t + 2700)
+        v.draw(Canvas(Bitmap.createBitmap(v.width, v.height, Bitmap.Config.ARGB_8888)))
+        touch(v, MotionEvent.ACTION_DOWN, v.askYes.centerX(), v.askYes.centerY(), t + 2800)
+        touch(v, MotionEvent.ACTION_UP, v.askYes.centerX(), v.askYes.centerY(), t + 2850)
+        assertEquals(listOf("zorp"), added)
+        Settings.update(context) { it.copy(suggestions = false) }
     }
 }

@@ -22,7 +22,8 @@ class Corrector(lines: Sequence<String>) {
     private val words = HashMap<String, Entry>(131072)
 
     /** Words the owner has kept by undoing a correction: never corrected again. */
-    private val learned = HashSet<String>()
+    // Read by the suggestion thread while the keyboard may add to it: synchronised.
+    private val learned: MutableSet<String> = java.util.Collections.synchronizedSet(HashSet<String>())
 
     init {
         for (line in lines) {
@@ -51,6 +52,12 @@ class Corrector(lines: Sequence<String>) {
     fun learnAll(ws: Collection<String>) { for (w in ws) learn(w) }
 
     fun isKnown(word: String): Boolean = word.lowercase().let { it in words || it in learned }
+
+    /** [word] spelt as the dictionary spells it ("i'm" -> "I'm"), or null for a word it doesn't know. */
+    fun spelling(word: String): String? {
+        val lower = word.lowercase()
+        return words[lower]?.word ?: lower.takeIf { it in learned }
+    }
 
     /** The correction for [typed], or null to leave it as typed. */
     fun correct(typed: String): String? {

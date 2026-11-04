@@ -53,6 +53,16 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         fun onPick(i: Int) {}
         /** The notice in the suggestion bar was tapped. */
         fun onNotice() {}
+        /** Backspace went down, or let go: the bar can wait till it's done deleting. */
+        fun onBackspaceHeld(held: Boolean) {}
+        /** Speech input on or off: the period held, or tapped after the orange key. */
+        fun onVoice() {}
+        /** Return held on the Sym page: open the Pre Keyboard app. */
+        fun onOpenApp() {}
+        /** Whether [word], held in the bar, may be added to the dictionary (it isn't in it yet). */
+        fun canAdd(word: String): Boolean = false
+        /** The owner said yes to adding [word] to the dictionary. */
+        fun onAddWord(word: String) {}
     }
 
     var settings = Settings.read(context)
@@ -70,6 +80,14 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         invalidate()
     }
 
+    /** Runs [change], then re-lays the keyboard if it brought the bar up or took it away. */
+    private inline fun barChange(change: () -> Unit) {
+        val was = barShown
+        change()
+        if (barShown != was) { painter.clear(); requestLayout() }
+        invalidate()
+    }
+
     // --- Sizes ------------------------------------------------------------------------------
 
     /** A row's height: the owner's choice, held to a share of the screen in landscape. */
@@ -83,7 +101,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
     private var navInset = 0
     private val bottomPad get() = 2 * dp + navInset
     /** The suggestion bar, above the keys: when it is switched on, or there is a notice to show in it. */
-    private val barShown get() = settings.showsBar || notice != null
+    private val barShown get() = settings.showsBar || notice != null || voiceLine != null
     private val barHeight get() = if (barShown) Math.round(rowHeight * 0.72f).toFloat() else 0f
     private val keysHeight get() = barHeight + rowHeight * 4 + topBorder + bottomPad
 
@@ -198,6 +216,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         drawTrail(c)
         drawPreview(c)
         drawExtended(c)
+        drawAsk(c)
     }
 
     override fun computeScroll() {
@@ -228,7 +247,23 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
             Kind.ORANGE -> painter.orange(c, box, style, alt)
             Kind.SYM -> functionLabel(c, key.label ?: "", box)
         }
+        key.corner?.let { cornerIcon(c, it, box) }
         if (holds(key)) holdDot(c, key, box)
+    }
+
+    /**
+     * The small icon in a key's top right corner, white and the size of a printed alternate,
+     * as the symbols are printed. The microphone turns the Pre's orange while listening.
+     */
+    private fun cornerIcon(c: Canvas, corner: Corner, r: RectF) {
+        val size = letterSize() * 0.62f
+        val i = inset(r)
+        val cx = r.right - i - size / 2
+        val cy = r.top + i + size / 2 - size * 0.08f
+        when (corner) {
+            Corner.MIC -> painter.icon(c, Painter.Icon.MIC, cx, cy, size, if (listening) Style.ORANGE.accent else Color.WHITE)
+            Corner.GEAR -> painter.icon(c, Painter.Icon.GEAR, cx, cy, size * 0.9f, Color.WHITE)
+        }
     }
 
     /** Whether holding [key] opens its list: only with "Hold for more" on. */
@@ -268,6 +303,20 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         val letter = if (page == Page.SYMBOLS) key.text else key.text.uppercase()
         val size = letterSize()
         val a = key.alt
+        if (a == null && key.corner != null) {
+            // The period, printed as I, K and M are, low and to the left of its corner icon.
+            text.textSize = size
+            text.color = Color.WHITE
+            text.alpha = if (alt != Alt.OFF) 89 else 255
+            text.getTextBounds("H", 0, 1, ink)
+            var baseline = r.bottom - inset(r) - ink.bottom
+            text.getTextBounds(letter, 0, letter.length, ink)
+            baseline = Math.min(baseline, r.bottom - inset(r) - ink.bottom)
+            val lx = r.centerX() - r.width() * LETTER_NUDGE - text.measureText(letter) / 2
+            c.drawText(letter, lx, baseline, text)
+            text.alpha = 255
+            return
+        }
         if (a == null) {
             text.textSize = fitted(letter, size, r.width() - 2 * inset(r))
             text.color = if (key.accent) style.accent else Color.WHITE
@@ -339,6 +388,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
     private fun drawPreview(c: Canvas) {
         val z = preview ?: return
         if (extended != null) return
+        if (z.key.corner == Corner.MIC && alt != Alt.OFF) return
         val s = output(z.key)
         val w = Math.max(z.rect.width() * 1.25f, rowHeight * 0.95f)
         val h = rowHeight * 1.15f
@@ -467,14 +517,19 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
      * comes up for the notice alone.
      */
     var notice: String? = null
-        set(v) {
-            if (v == field) return
-            val relayout = (v == null) != (field == null) && !settings.showsBar
-            field = v
-            if (relayout) { painter.clear(); requestLayout() }
-            invalidate()
-        }
-    private val showingNotice get() = notice != null && words.all { it.isEmpty() }
+        set(v) { if (v != field) barChange { field = v } }
+    private val showingNotice get() = notice != null && words.all { it.isEmpty() } && voiceLine == null
+
+    /** Speech input is on: the period's microphone is lit. */
+    var listening = false
+        set(v) { if (v != field) { field = v; invalidate() } }
+
+    /**
+     * A line across the whole bar while speech input is on ("Listening…"), or just after it
+     * stopped for a reason worth telling; tapping it while listening stops it.
+     */
+    var voiceLine: String? = null
+        set(v) { if (v != field) barChange { field = v } }
 
     /** Three words, left to right; the middle one is the likeliest. "" leaves a place empty. */
     fun setSuggestions(w: List<String>) {
@@ -494,6 +549,13 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         text.textSize = size
         val fm = text.fontMetrics
         val baseline = r.centerY() - (fm.ascent + fm.descent) / 2
+        voiceLine?.let { v ->
+            if (barPressed >= 0) { barPaint.color = BAR_PRESSED; c.drawRect(r, barPaint) }
+            text.color = Style.ORANGE.accent
+            text.textSize = fitted(v, size * 0.85f, r.width() - 24 * dp)
+            c.drawText(v, r.centerX() - text.measureText(v) / 2, baseline, text)
+            return
+        }
         val n = notice
         if (n != null && showingNotice) {
             if (barPressed >= 0) { barPaint.color = BAR_PRESSED; c.drawRect(r, barPaint) }
@@ -515,6 +577,96 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
             text.color = if (i == 1) Style.ORANGE.accent else Color.WHITE
             text.textSize = fitted(w, size, cw - 12 * dp)
             c.drawText(w, cell.centerX() - text.measureText(w) / 2, baseline, text)
+        }
+    }
+
+    // --- Holding a word in the bar: add it to the dictionary -------------------------------
+
+    /** The word the popup offers to add, while it is up. */
+    private var asking: String? = null
+    private val askBox = RectF()
+    /** The popup's buttons, where they were last drawn (the tests press them too). */
+    internal val askYes = RectF()
+    internal val askNo = RectF()
+    /** The touch now down began while the popup was up (not the hold that opened it). */
+    private var askDown = false
+    /** Where that touch began: 1 Yes, -1 Cancel, 0 elsewhere. */
+    private var askPressed = 0
+
+    private val barHold = Runnable {
+        val i = barPressed
+        if (i < 0 || showingNotice || voiceLine != null) return@Runnable
+        val w = words[i]
+        if (w.isEmpty() || !host.canAdd(w)) return@Runnable
+        barPressed = -1
+        asking = w
+        askDown = false
+        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        invalidate()
+    }
+
+    private fun askHit(x: Float, y: Float) = when {
+        askYes.contains(x, y) -> 1
+        askNo.contains(x, y) -> -1
+        else -> 0
+    }
+
+    /** While the popup is up, every touch is its: Yes adds, Cancel or anywhere else closes it. */
+    private fun askTouch(e: MotionEvent): Boolean {
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                askDown = true
+                askPressed = askHit(e.x, e.y)
+                if (askPressed != 0) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            }
+            MotionEvent.ACTION_UP -> if (askDown) {
+                val word = asking
+                val hit = askHit(e.x, e.y)
+                if (hit == askPressed) {
+                    asking = null
+                    if (hit == 1 && word != null) host.onAddWord(word)
+                }
+                askDown = false; askPressed = 0
+            }
+            MotionEvent.ACTION_CANCEL -> { askDown = false; askPressed = 0 }
+        }
+        invalidate()
+        return true
+    }
+
+    /** A small popup over the top of the keyboard: Add "word" to dictionary? Cancel / Yes. */
+    private fun drawAsk(c: Canvas) {
+        val word = asking ?: return
+        val top = keyboardTop().toFloat()
+        barPaint.color = Color.argb(150, 0, 0, 0)
+        c.drawRect(0f, top, width.toFloat(), height.toFloat(), barPaint)
+        val pad = 10 * dp
+        val w = Math.min(width - 24 * dp, 340 * dp)
+        val buttonH = rowHeight * 0.72f
+        val lineH = rowHeight * 0.8f
+        val h = pad + lineH + buttonH + pad
+        val left = (width - w) / 2
+        val boxTop = top + Math.max(4 * dp, (barHeight + rowHeight - h) / 2 + 4 * dp)
+        askBox.set(left, boxTop, left + w, boxTop + h)
+        bubble(c, askBox)
+        val question = "Add \u201c$word\u201d to dictionary?"
+        text.textSize = fitted(question, rowHeight * 0.33f, w - 2 * pad)
+        text.color = Color.WHITE
+        centred(c, question, RectF(left, boxTop + pad, left + w, boxTop + pad + lineH))
+        val bw = (w - 3 * pad) / 2
+        val by = boxTop + pad + lineH
+        askNo.set(left + pad, by, left + pad + bw, by + buttonH)
+        askYes.set(left + 2 * pad + bw, by, left + 2 * pad + 2 * bw, by + buttonH)
+        val rad = 6 * dp
+        bubblePaint.style = Paint.Style.FILL
+        bubblePaint.color = if (askDown && askPressed == -1) Color.rgb(96, 104, 110) else Color.rgb(64, 70, 75)
+        c.drawRoundRect(askNo, rad, rad, bubblePaint)
+        bubblePaint.color = if (askDown && askPressed == 1) Color.rgb(0xFF, 0x7A, 0x60) else Style.ORANGE.accent
+        c.drawRoundRect(askYes, rad, rad, bubblePaint)
+        for ((label, r) in listOf("Cancel" to askNo, "Yes" to askYes)) {
+            text.textSize = fitted(label, rowHeight * 0.32f, r.width() - 8 * dp)
+            text.color = Color.WHITE
+            centred(c, label, r)
         }
     }
 
@@ -607,11 +759,32 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
                 performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                 host.onToggleStyle()
             }
-            else -> if (holds(z.key)) { held = true; showExtended(z) }
+            else -> when {
+                z.key.corner == Corner.MIC -> {
+                    held = true
+                    performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                    preview = null
+                    host.onVoice()
+                    invalidate()
+                }
+                z.key.corner == Corner.GEAR -> {
+                    held = true
+                    performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                    host.onOpenApp()
+                }
+                holds(z.key) -> { held = true; showExtended(z) }
+            }
         }
     }
 
     private var repeats = 0
+    /** Backspace is down, and the host has been told. */
+    private var deleting = false
+
+    private fun stopRepeat() {
+        handler.removeCallbacks(repeat)
+        if (deleting) { deleting = false; host.onBackspaceHeld(false) }
+    }
     private val repeat = object : Runnable {
         override fun run() {
             if (pressed?.key?.kind != Kind.BACKSPACE) return
@@ -623,7 +796,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
     }
 
     private fun press(z: Zone?) {
-        handler.removeCallbacks(hold); handler.removeCallbacks(repeat)
+        handler.removeCallbacks(hold); stopRepeat()
         pressed = z
         held = false
         preview = if (z?.key?.kind == Kind.CHAR) z else null
@@ -631,12 +804,18 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         when (z.key.kind) {
             Kind.BACKSPACE -> {
                 repeats = 0
+                deleting = true
+                host.onBackspaceHeld(true)
                 host.onBackspace(false)
                 handler.postDelayed(repeat, FIRST_REPEAT)
             }
             Kind.SPACE -> handler.postDelayed(hold, HOLD_FOR_CURSOR)
             Kind.ORANGE, Kind.GLOBE -> handler.postDelayed(hold, HOLD_FOR_SETTING)
-            else -> if (holds(z.key)) handler.postDelayed(hold, HOLD_FOR_EXTENDED)
+            else -> when {
+                z.key.corner == Corner.MIC -> handler.postDelayed(hold, HOLD_FOR_VOICE)
+                z.key.corner == Corner.GEAR -> handler.postDelayed(hold, HOLD_FOR_SETTING)
+                holds(z.key) -> handler.postDelayed(hold, HOLD_FOR_EXTENDED)
+            }
         }
         invalidate()
     }
@@ -653,6 +832,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
             }
             return emoji.onTouch(e)
         }
+        if (asking != null) return askTouch(e)
         val x = e.x; val y = e.y
         // A touch that starts in the suggestion bar stays there.
         if (e.actionMasked == MotionEvent.ACTION_DOWN) barPressed = -1
@@ -660,15 +840,18 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     barPressed = barCell(x, y)
-                    if (showingNotice || words[barPressed].isNotEmpty()) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    if (voiceLine != null || showingNotice || words[barPressed].isNotEmpty()) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    handler.postDelayed(barHold, HOLD_FOR_ADD)
                 }
                 MotionEvent.ACTION_UP -> {
+                    handler.removeCallbacks(barHold)
                     val i = barPressed
                     barPressed = -1
-                    if (showingNotice) { if (barCell(x, y) >= 0) host.onNotice() }
+                    if (voiceLine != null) { if (listening && barCell(x, y) >= 0) host.onVoice() }
+                    else if (showingNotice) { if (barCell(x, y) >= 0) host.onNotice() }
                     else if (barCell(x, y) == i && words[i].isNotEmpty()) host.onPick(i)
                 }
-                MotionEvent.ACTION_CANCEL -> barPressed = -1
+                MotionEvent.ACTION_CANCEL -> { handler.removeCallbacks(barHold); barPressed = -1 }
             }
             invalidate()
             return true
@@ -715,7 +898,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
                 if (z?.key !== pressed?.key) press(z)
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                handler.removeCallbacks(hold); handler.removeCallbacks(repeat)
+                handler.removeCallbacks(hold); stopRepeat()
                 if (swiping) {
                     if (e.actionMasked == MotionEvent.ACTION_UP) {
                         addSwipePoint(x, y)
@@ -771,7 +954,10 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
             Kind.RETURN -> host.onEnter()
             Kind.GLOBE -> host.onPickKeyboard()
             Kind.SPACE -> host.onText(" ")
-            Kind.CHAR -> type(output(key), usedAlt = alt != Alt.OFF && key.alt != null)
+            Kind.CHAR -> if (key.corner == Corner.MIC && alt != Alt.OFF) {
+                if (alt == Alt.ONCE) { alt = Alt.OFF; lastAltTap = NEVER }
+                host.onVoice()
+            } else type(output(key), usedAlt = alt != Alt.OFF && key.alt != null)
         }
     }
 
@@ -799,6 +985,8 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         extended = null; extendedFrame = null; pressed = null; preview = null
         cursorMode = false; held = false
         swiping = false; swipeMaybe = false; swipeN = 0; barPressed = -1
+        asking = null; askDown = false
+        if (deleting) { deleting = false; host.onBackspaceHeld(false) }
         handler.removeCallbacksAndMessages(null)
         updateCaps()
         invalidate()
@@ -834,6 +1022,9 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         // Our own: long enough that a slow tap never trips them.
         private const val HOLD_FOR_CURSOR = 450L
         private const val HOLD_FOR_SETTING = 600L
+        private const val HOLD_FOR_VOICE = 450L
+        /** Holding a word in the bar, to add it to the dictionary. */
+        private const val HOLD_FOR_ADD = 500L
         private const val CURSOR_STEP_X = 12f
 
         /** No tap yet: far enough back that the next tap is never the second of a pair. */
