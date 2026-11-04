@@ -575,7 +575,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
 
     /**
      * Something new is on the clipboard: the bar's right-hand place shows a paste icon in
-     * place of a word, till it is tapped or the owner starts typing.
+     * place of a word, till it is tapped.
      */
     var pasteOffered = false
         set(v) { if (v != field) { field = v; invalidate() } }

@@ -29,8 +29,8 @@ TouchPad keyboard. It shares no code with either.
   words (`I` → `don't`, `think`, `know`), learning the ones you use
 - **Your own words**: hold a word in the bar to add it to the dictionary
 - **Speech input**: hold the period and talk
-- **Paste**: copy something and a clipboard icon waits in the bar's right-hand place; tap it
-  to paste, or just start typing and it goes away
+- **Paste**: copy or cut something and a clipboard icon waits in the bar's right-hand place
+  until you tap it to paste
 - **Fix a word**: tap a word in the text and the bar offers what else it might be (`ball` →
   `bell`, `bill`, `bull`); tap one and it takes the word's place
 - **Autocorrect** for typos and for contractions (`dont` → `don't`), undone by the next
@@ -115,9 +115,9 @@ the keyboard on screen.
   English and from what you usually type after the word before (kept on the phone; not in
   incognito fields). Tap a word already in the text and the bar offers the nearest other
   words, the likeliest in the middle; tap one to swap it in, and the word it replaced is
-  offered back in case. When something new is copied, a paste icon (a clipboard with a page)
-  takes the right-hand place until you tap it, which pastes, or start typing. Either way that
-  copy isn't offered again.
+  offered back in case. When something new is copied or cut, a paste icon (a clipboard with
+  a page) takes the right-hand place, through typing and from field to field, until you tap
+  it to paste. That copy isn't offered again; the next copy or cut is.
 - **Swipe to type** (off by default): see above. It brings the suggestion bar with it.
 - **Emoji suggestions** (off by default): the bar's right-hand place shows an emoji for the
   word, when there is one (`pizza` → 🍕, `love` → ❤️). Tap it to swap the word for the emoji.

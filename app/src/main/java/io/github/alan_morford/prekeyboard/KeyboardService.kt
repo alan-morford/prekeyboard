@@ -172,10 +172,10 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
     }.getOrNull()
 
     /**
-     * The clipboard is offered while it holds something not yet pasted or typed past: the
-     * paste icon stays in the bar till it is tapped or the owner starts typing. What was
-     * offered and passed over is remembered (see [clipKey]), so it isn't offered
-     * again, even after the keyboard restarts; a new copy or cut always is.
+     * The clipboard is offered while it holds something not yet pasted: the paste icon stays
+     * in the bar, through typing and from field to field, till it is tapped. What was pasted
+     * is remembered (see [clipKey]), so it isn't offered again, even after the keyboard
+     * restarts; a new copy or cut always is.
      */
     private fun offerPaste() {
         val v = view ?: return
@@ -185,8 +185,8 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
 
     private val clipPrefs by lazy { getSharedPreferences("clip", MODE_PRIVATE) }
 
-    /** The owner started typing, or pasted: the clipboard's offer is over. */
-    private fun passOverPaste() {
+    /** Pasted: the clipboard's offer is over, till something new is copied or cut. */
+    private fun pasted() {
         val v = view ?: return
         if (!v.pasteOffered) return
         v.pasteOffered = false
@@ -195,7 +195,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
 
     override fun onPaste() {
         val t = clipText()
-        passOverPaste()
+        pasted()
         if (t == null) return
         ownEdit()
         composer.forget()
@@ -424,7 +424,6 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         val at = barWord
         if (at != null) { replaceTapped(at, word); return }
         ownEdit()
-        passOverPaste()
         val learn = i == 0 && barVerbatim && composer.corrector?.isKnown(word) == false
         composer.pick(word, learn)
         if (i == 2 && barEmoji) Settings.addRecentEmoji(this, word)
@@ -509,7 +508,6 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         Log.d(TAG, "swipe: ${xs.size} points, ${SystemClock.uptimeMillis() - start} ms, $found")
         if (found.isEmpty()) { refreshBar(); return }
         ownEdit()
-        passOverPaste()
         swipeGuesses = found.map { cased(it, caps) }
         composer.swipe(swipeGuesses[0], rules())
         learnPair()
@@ -527,7 +525,6 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
     override fun onText(text: String) {
         if (voice.on) voice.stop(now = true)
         ownEdit()
-        passOverPaste()
         composer.type(text, rules())
         if (text == " " || (text.length == 1 && text[0] in ".,?!:;")) learnPair()
     }
@@ -549,7 +546,6 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
     override fun onEnter() {
         if (voice.on) voice.stop(now = true)
         ownEdit()
-        passOverPaste()
         composer.beforeEnter(rules())
         val info = editor
         val options = info?.imeOptions ?: 0
@@ -614,7 +610,6 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
                 return
             }
             ownEdit()
-            passOverPaste()
             if (!voiceComposing) { voiceStart(); composer.forget(); voiceComposing = true }
             ic.setComposingText(voiceText(text), 1)
         }
