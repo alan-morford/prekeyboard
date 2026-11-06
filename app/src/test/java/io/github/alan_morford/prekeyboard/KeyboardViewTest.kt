@@ -400,4 +400,80 @@ class KeyboardViewTest {
         assertEquals(listOf(1), picks)                 // the other places are words still
         Settings.update(context) { it.copy(suggestions = false) }
     }
+
+    /** One event of a touch with fingers [ids] at [xy]; [index] is the finger it is about. */
+    private fun fingers(v: KeyboardView, action: Int, index: Int, ids: List<Int>, xy: List<Pair<Float, Float>>, t: Long) {
+        val props = Array(ids.size) { MotionEvent.PointerProperties().apply { id = ids[it]; toolType = MotionEvent.TOOL_TYPE_FINGER } }
+        val coords = Array(ids.size) { MotionEvent.PointerCoords().apply { x = xy[it].first; y = xy[it].second; pressure = 1f; size = 1f } }
+        val a = if (action == MotionEvent.ACTION_POINTER_DOWN || action == MotionEvent.ACTION_POINTER_UP)
+            action or (index shl MotionEvent.ACTION_POINTER_INDEX_SHIFT) else action
+        val e = MotionEvent.obtain(t, t, a, ids.size, props, coords, 0, 0, 1f, 1f, 0, 0, 0, 0)
+        v.dispatchTouchEvent(e); e.recycle()
+    }
+
+    @Test fun slidingOffBackspaceDoesNothingTillTheFingerLifts() {
+        val v = keyboard()
+        "abc".forEach { letter(v, it) }
+        val (bx, by) = at(v, 1, 9.5f)
+        val (lx, ly) = at(v, 1, 5.5f)               // h
+        val t = SystemClock.uptimeMillis()
+        touch(v, MotionEvent.ACTION_DOWN, bx, by, t)
+        assertEquals("ab", typed.toString())         // one letter, on the way down
+        touch(v, MotionEvent.ACTION_MOVE, lx, ly, t + 50)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1500))
+        assertEquals("ab", typed.toString())         // off the key: no more repeats
+        touch(v, MotionEvent.ACTION_MOVE, bx, by, t + 1600)
+        touch(v, MotionEvent.ACTION_UP, bx, by, t + 1650)
+        assertEquals("ab", typed.toString())         // and nothing on the way back or the lift
+        assertEquals(listOf(true, false), heldEvents)
+        touch(v, MotionEvent.ACTION_DOWN, lx, ly, t + 1700)
+        touch(v, MotionEvent.ACTION_MOVE, bx, by, t + 1750)
+        touch(v, MotionEvent.ACTION_UP, lx, ly, t + 1800)
+        assertEquals("ab", typed.toString())         // a letter slid onto backspace isn't typed either
+        letter(v, 'h')
+        assertEquals("abh", typed.toString())
+    }
+
+    @Test fun aSecondFingerTypesTheFirstKeyAndIsNoSwipe() {
+        Settings.write(context, Settings(swipe = true))
+        val v = keyboard().also { it.apply(Settings.read(context).copy(swipe = true)) }
+        val h = at(v, 1, 5.5f); val i = at(v, 0, 7.5f); val t = SystemClock.uptimeMillis()
+        // h down, i down before h lifts, h up, i up: "hi", typed, and no swipe.
+        fingers(v, MotionEvent.ACTION_DOWN, 0, listOf(0), listOf(h), t)
+        fingers(v, MotionEvent.ACTION_POINTER_DOWN, 1, listOf(0, 1), listOf(h, i), t + 40)
+        assertEquals("h", typed.toString())
+        fingers(v, MotionEvent.ACTION_MOVE, 0, listOf(0, 1), listOf(h, i), t + 50)
+        fingers(v, MotionEvent.ACTION_POINTER_UP, 0, listOf(0, 1), listOf(h, i), t + 60)
+        fingers(v, MotionEvent.ACTION_MOVE, 0, listOf(1), listOf(i), t + 70)
+        fingers(v, MotionEvent.ACTION_UP, 0, listOf(1), listOf(i), t + 90)
+        assertEquals("hi", typed.toString())
+        assertEquals(0, swipes)
+        // The other order: the second finger lifts first, then the first lifts and types nothing more.
+        fingers(v, MotionEvent.ACTION_DOWN, 0, listOf(0), listOf(h), t + 200)
+        fingers(v, MotionEvent.ACTION_POINTER_DOWN, 1, listOf(0, 1), listOf(h, i), t + 240)
+        fingers(v, MotionEvent.ACTION_POINTER_UP, 1, listOf(0, 1), listOf(h, i), t + 260)
+        fingers(v, MotionEvent.ACTION_UP, 0, listOf(0), listOf(h), t + 280)
+        assertEquals("hihi", typed.toString())
+        assertEquals(0, swipes)
+    }
+
+    @Test fun aSwipeStillSwipes() {
+        val v = keyboard().also { it.apply(Settings.read(context).copy(swipe = true)) }
+        val k = v.swipeLayout()!!
+        val t = SystemClock.uptimeMillis()
+        val path = "helo".map { k.x[it - 'a'] to k.y[it - 'a'] }
+        touch(v, MotionEvent.ACTION_DOWN, path[0].first, path[0].second, t)
+        var time = t
+        for (n in 1 until path.size) for (s in 1..6) {
+            val (x0, y0) = path[n - 1]; val (x1, y1) = path[n]
+            time += 10
+            touch(v, MotionEvent.ACTION_MOVE, x0 + (x1 - x0) * s / 6, y0 + (y1 - y0) * s / 6, time)
+        }
+        // A finger brushing the screen mid-swipe changes nothing.
+        fingers(v, MotionEvent.ACTION_POINTER_DOWN, 1, listOf(0, 1), listOf(path.last(), 10f to 10f), time + 5)
+        fingers(v, MotionEvent.ACTION_POINTER_UP, 1, listOf(0, 1), listOf(path.last(), 10f to 10f), time + 8)
+        touch(v, MotionEvent.ACTION_UP, path.last().first, path.last().second, time + 10)
+        assertEquals(1, swipes)
+        assertEquals("", typed.toString())
+    }
 }

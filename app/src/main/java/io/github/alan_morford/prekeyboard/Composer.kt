@@ -34,6 +34,11 @@ class Composer(private val field: Field, private val clock: () -> Long) {
     var corrector: Corrector? = null
     /** Told about a word the owner kept by undoing its correction, so it can be remembered. */
     var onLearned: (String) -> Unit = {}
+    /**
+     * Told when autocorrect changed a word: what it became, and how many characters the
+     * cursor is past its end once the edit is done (the space or punctuation that ended it).
+     */
+    var onCorrected: (fixed: String, tail: Int) -> Unit = { _, _ -> }
 
     private class Correction(val typed: String, val fixed: String, val separator: String)
     private var last: Correction? = null
@@ -93,23 +98,28 @@ class Composer(private val field: Field, private val clock: () -> Long) {
         // A period after a number and a space starts something (3 .5, 3.14 .net); after a word, it ends it.
         val afterNumber = typedSpace && text == "." && tail!![0].isDigit()
         val snap = (spaced || (typedSpace && !afterNumber)) && text.length == 1 && text[0] in SENTENCE
+        var fixed: Correction? = null
+        var after = text.length
         field.batch {
             // Sentence punctuation goes against the word, not after the space.
             if (snap) field.delete(1)
             if (isSeparator(text) && rules.autocorrect) {
                 val fix = correctWord(text)
-                if (fix != null) { field.delete(fix.typed.length); field.commit(fix.fixed + text); last = fix }
+                if (fix != null) { field.delete(fix.typed.length); field.commit(fix.fixed + text); last = fix; fixed = fix }
                 else field.commit(text)
             } else field.commit(text)
             if (text == "." && rules.prose && periodWantsSpace()) {
                 field.commit(" ")
                 autoTail = ". "
+                after++
             } else if (snap && typedSpace) {
                 // The owner's space moves to after the punctuation, where it belongs.
                 field.commit(" ")
                 autoTail = "$text "
+                after++
             }
         }
+        fixed?.let { onCorrected(it.fixed, after) }
         if (text == " ") markSpace()
         lastSpaceAt = if (text == " ") clock() else Long.MIN_VALUE / 2
     }
@@ -142,6 +152,7 @@ class Composer(private val field: Field, private val clock: () -> Long) {
         if (!rules.autocorrect) return
         val fix = correctWord("") ?: return
         field.batch { field.delete(fix.typed.length); field.commit(fix.fixed) }
+        onCorrected(fix.fixed, 0)
     }
 
     /**
@@ -200,12 +211,14 @@ class Composer(private val field: Field, private val clock: () -> Long) {
         spaceTail = null
         val b = field.before(1)
         swipedSpace = b.isNotEmpty() && !b[0].isWhitespace() && b[0] !in OPENERS
+        var fixed: String? = null
         field.batch {
             if (swipedSpace && rules.autocorrect) correctWord(" ")?.let { fix ->
-                field.delete(fix.typed.length); field.commit(fix.fixed)
+                field.delete(fix.typed.length); field.commit(fix.fixed); fixed = fix.fixed
             }
             field.commit((if (swipedSpace) " " else "") + word + " ")
         }
+        fixed?.let { onCorrected(it, word.length + 2) }
         swiped = word
         autoTail = "$word "
     }

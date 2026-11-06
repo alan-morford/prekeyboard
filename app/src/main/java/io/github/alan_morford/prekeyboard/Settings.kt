@@ -18,6 +18,8 @@ data class Settings(
     val holdForMore: Boolean = false,
     /** An emoji for the word in the suggestion bar's right-hand place, when there is one. */
     val emojiSuggestions: Boolean = false,
+    /** A light vibration as each key goes down. */
+    val vibrate: Boolean = false,
 ) {
     /** Swiping and emoji suggestions need the bar too: it is where they show. */
     val showsBar get() = suggestions || swipe || emojiSuggestions
@@ -44,6 +46,7 @@ data class Settings(
                 swipe = p.getBoolean("swipe", d.swipe),
                 holdForMore = p.getBoolean("holdForMore", d.holdForMore),
                 emojiSuggestions = p.getBoolean("emojiSuggestions", d.emojiSuggestions),
+                vibrate = p.getBoolean("vibrate", d.vibrate),
             )
         }
 
@@ -53,18 +56,21 @@ data class Settings(
                 .putBoolean("autocorrect", s.autocorrect).putBoolean("doubleSpacePeriod", s.doubleSpacePeriod)
                 .putBoolean("suggestions", s.suggestions).putBoolean("swipe", s.swipe)
                 .putBoolean("holdForMore", s.holdForMore).putBoolean("emojiSuggestions", s.emojiSuggestions)
+                .putBoolean("vibrate", s.vibrate)
                 .apply()
         }
 
         fun update(context: Context, change: (Settings) -> Settings) = write(context, change(read(context)))
 
         // Words kept by undoing a correction, and recently used emoji: data, not choices.
-        private const val LEARNED = "learned"
+        const val LEARNED = "learned"
         private const val RECENT = "recentEmoji"
 
         fun learned(context: Context): Set<String> = prefs(context).getStringSet(LEARNED, emptySet()) ?: emptySet()
         fun addLearned(context: Context, word: String) =
             prefs(context).edit().putStringSet(LEARNED, learned(context) + word.lowercase()).apply()
+        fun removeLearned(context: Context, word: String) =
+            prefs(context).edit().putStringSet(LEARNED, learned(context) - word.lowercase()).apply()
 
         fun recentEmoji(context: Context): List<String> =
             (prefs(context).getString(RECENT, "") ?: "").split('\n').filter { it.isNotEmpty() }

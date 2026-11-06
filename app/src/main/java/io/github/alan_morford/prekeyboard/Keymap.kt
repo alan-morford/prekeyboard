@@ -10,7 +10,7 @@ package io.github.alan_morford.prekeyboard
  *   Q/ W+ E1 R2 T3 (printed top left)   Y( U) I% O" P= (top right)
  *   A& S- D4 F5 G6 (top left)           H$ J! K: L' (top right)
  *   Z* X7 C8 V9 (top left)              B# N? M; ,_ (top right)
- *   @0, with the 0 nearly as large as the @.
+ *   @0 (here the 0 is printed top left, as 1, 4 and 7 are above it).
  */
 
 enum class Kind { CHAR, SHIFT, BACKSPACE, RETURN, ORANGE, SYM, SPACE, GLOBE, EMOJI }
@@ -19,7 +19,7 @@ enum class Kind { CHAR, SHIFT, BACKSPACE, RETURN, ORANGE, SYM, SPACE, GLOBE, EMO
 enum class Corner { MIC, GEAR }
 
 /** Which top corner a key's printed alternate sits in; the letter takes the bottom corner opposite. */
-enum class AltPos { LEFT, RIGHT, INLINE }
+enum class AltPos { LEFT, RIGHT }
 
 class Key(
     val kind: Kind,
@@ -54,6 +54,10 @@ private val L = AltPos.LEFT
 
 object Keymap {
 
+    /** The bottom row's two-column keys at each end: drawn this wide, after an inset of [EDGE] that still takes a touch. */
+    private const val WIDE = 1.65f
+    private const val EDGE = 0.35f
+
     private val shift = Key(Kind.SHIFT)
     private val sym = Key(Kind.SYM, label = "Sym")
 
@@ -72,7 +76,7 @@ object Keymap {
         ),
         listOf(
             c("a", "&", L, "a à á â ã ä å æ ª"),
-            c("s", "-", L, "s š ş ß σ $ ś"),
+            c("s", "-", L, "s š ş ß σ $ ś — –"),
             c("d", "4", L, "d ð † ‡ ď đ"),
             c("f", "5", L),
             c("g", "6", L, "g ğ"),
@@ -95,19 +99,19 @@ object Keymap {
             c(",", "_", ext = ", … • ¿"),
             f(Kind.RETURN),
         ),
-        // The Pre's bottom row, inset at each end; the keys' widths are measured off a Pre.
-        // The space bar is the Sym page's, the same width in the same place (3 to 7), so it
-        // never moves under the thumb when the page changes; the insets give up the room.
-        // The weights sum to 10, so the columns above stay aligned. The period is exactly the
-        // column of I, K and M above it, with the microphone printed in its corner.
+        // The Pre's bottom row, inset at each end. On the column grid above: shift and Sym
+        // take two columns each (the same size, inset alike), @ is one key in the column of
+        // E, D and X with its 0 where theirs are, the space bar 3 to 7, and the period the
+        // column of M below I and K, with the microphone printed in its corner. The Sym
+        // page's bottom row is the same, key for key, so nothing moves when the page changes.
         listOf(
-            Slot(0.39f, shift, drawn = false),
-            Slot(1.43f, shift),
-            c("@", "0", AltPos.INLINE, w = 1.18f),
+            Slot(EDGE, shift, drawn = false),
+            Slot(WIDE, shift),
+            c("@", "0", L),
             Slot(4f, Key(Kind.SPACE, " ")),
             Slot(1f, Key(Kind.CHAR, ".", corner = Corner.MIC)),
-            Slot(1.65f, sym),
-            Slot(0.35f, sym, drawn = false),
+            Slot(WIDE, sym),
+            Slot(EDGE, sym, drawn = false),
         ),
     )
 
@@ -121,7 +125,8 @@ object Keymap {
 
     /**
      * The Sym page: digits in the accent colour, then only symbols the letters page doesn't
-     * already type (its printed alternates, @ , . and their hold lists), so the page adds to
+     * already type (its printed alternates, @ , . and their hold lists; the period is repeated
+     * so it stays under the thumb), so the page adds to
      * the letters instead of repeating them. The digits stay, since a row of them is what
      * people reach for.
      */
@@ -143,7 +148,7 @@ object Keymap {
             listOf(
                 s("["), s("]"), s("{"), s("}"),
                 s("<", "‹ « ≤"), s(">", "› » ≥"),
-                s("^"), s("~", "≈"), s("|", "¦ ‖"), s("\\"),
+                s("^"), s("~", "≈"), s("|", "¦ ‖ ¬"), s("\\"),
             ),
             // Where LuneOS has its language key, Android gets the keyboard picker.
             listOf(
@@ -159,21 +164,21 @@ object Keymap {
                 Slot(1f, back),
             ),
             // Key for key the letters page's bottom row (ABC where shift is, emoji where @ is,
-            // the dash where the period is, Return where Sym is), so nothing on it moves when
-            // the page changes.
+            // the period, microphone and all, where the period is, Return where Sym is), so nothing
+            // on it moves when the page changes. The dashes are held on S, and ¬ on |.
             run {
                 val abc = Key(Kind.SYM, label = "ABC")
                 // Hold Return here for the Pre Keyboard app.
                 val ret = Key(Kind.RETURN, corner = Corner.GEAR)
                 listOf(
-                    Slot(0.39f, abc, drawn = false),
-                    Slot(1.43f, abc),
+                    Slot(EDGE, abc, drawn = false),
+                    Slot(WIDE, abc),
                     // Tap for the emoji page; hold for LuneOS's text emoticons.
-                    Slot(1.18f, Key(Kind.EMOJI, extended = listOf(":-)", ";-)", ":-(", ":'(", ":-P", ":-O", "<3"))),
+                    Slot(1f, Key(Kind.EMOJI, extended = listOf(":-)", ";-)", ":-(", ":'(", ":-P", ":-O", "<3"))),
                     Slot(4f, Key(Kind.SPACE, " ")),
-                    Slot(1f, Key(Kind.CHAR, "—", extended = listOf("—", "–", "¬"))),
-                    Slot(1.65f, ret),
-                    Slot(0.35f, ret, drawn = false),
+                    Slot(1f, Key(Kind.CHAR, ".", corner = Corner.MIC)),
+                    Slot(WIDE, ret),
+                    Slot(EDGE, ret, drawn = false),
                 )
             },
         )

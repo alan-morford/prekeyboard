@@ -11,6 +11,8 @@ package io.github.alan_morford.prekeyboard
  *   distance that knows the Pre's keyboard: hitting the key next door, swapping two letters
  *   or doubling one costs less than any other slip. Distance is traded against how common the
  *   word is, so "teh" becomes "the" rather than "ten".
+ * - Two words run together, the space missed or hit as a letter above it, come apart:
+ *   "theyare" and "theynare" -> "they are", when that beats any one word.
  *
  * Plain Kotlin with no Android in it, so the tests run it directly.
  */
@@ -45,11 +47,16 @@ class Corrector(lines: Sequence<String>) {
 
     val size get() = words.size
 
+    /** Whether one word commonly follows another (from NextWords), to tell run-together words apart. */
+    @Volatile var follows: (String, String) -> Boolean = { _, _ -> false }
+
     /** Every word with its score, for the swipe decoder. */
     fun entries(): Sequence<Pair<String, Int>> = words.values.asSequence().map { it.word to it.score }
 
     fun learn(word: String) { learned += word.lowercase() }
     fun learnAll(ws: Collection<String>) { for (w in ws) learn(w) }
+    /** The owner took [word] out of their dictionary: corrected again, unless the dictionary has it. */
+    fun unlearn(word: String) { learned -= word.lowercase() }
 
     fun isKnown(word: String): Boolean = word.lowercase().let { it in words || it in learned }
 
@@ -76,7 +83,9 @@ class Corrector(lines: Sequence<String>) {
         }
         if (lower.length < 2 || '\'' in lower) return null
 
-        val best = nearest(lower) ?: return null
+        val one = nearestScored(lower, 1).firstOrNull()
+        val two = split(lower)
+        val best = if (two != null && (one == null || two.second > one.second)) two.first else one?.first ?: return null
         return casedLike(typed, best).takeIf { it != typed }
     }
 
@@ -159,24 +168,57 @@ class Corrector(lines: Sequence<String>) {
 
     // --- Finding the nearest word ------------------------------------------------------------
 
-    private fun nearest(w: String): String? = nearest(w, 1).firstOrNull()
+    private fun nearest(w: String, max: Int): List<String> = nearestScored(w, max).map { it.first }
 
-    private fun nearest(w: String, max: Int): List<String> {
+    /** The likeliest words [w] was a slip or two from, with how likely (higher is likelier). */
+    private fun nearestScored(w: String, max: Int): List<Pair<String, Float>> {
         val one = HashMap<String, Float>()
         edits(w, 0f, one, full = true)
-        pick(one, maxCost = if (w.length <= 3) 0.6f else 1.3f, minScore = if (w.length <= 3) 12 else 5, max)
+        pickScored(one, maxCost = if (w.length <= 3) 0.6f else 1.3f, minScore = if (w.length <= 3) 12 else 5, max)
             .let { if (it.isNotEmpty()) return it }
         if (w.length < 5) return emptyList()
         // Two slips: grow every one-slip spelling once more, with a narrower set of edits so a
         // long word stays quick even on an old phone.
         val two = HashMap<String, Float>()
         for ((s, c) in one) edits(s, c, two, full = false)
-        return pick(two, maxCost = 1.9f, minScore = 9, max)
+        return pickScored(two, maxCost = 1.9f, minScore = 9, max)
     }
+
+    /**
+     * [w] as two words whose space was missed ("theyare") or hit as a letter just above the
+     * space bar ("theynare"), and how likely, on the same scale as [nearestScored]. Both
+     * words must be everyday ones, so a typo is never taken apart into rare bits.
+     */
+    private fun split(w: String): Pair<String, Float>? {
+        if (w.length < 3) return null
+        var best: Pair<String, Float>? = null
+        fun consider(a: String, b: String, cost: Float) {
+            val ea = words[a] ?: return
+            val eb = words[b] ?: return
+            if (ea.score < halfScore(a) || eb.score < halfScore(b)) return
+            val paired = follows(a, b)
+            // Two little words that don't go together ("to on", "a the") are likelier a slip
+            // in one word than two words; a longer pair ("I went", "the dog") can stand.
+            if (!paired && a.length + b.length < 6 && maxOf(a.length, b.length) < 4) return
+            val pair = if (paired) 0f else UNPAIRED
+            val value = minOf(ea.score, eb.score) - COST_WEIGHT * cost - pair
+            if (best == null || value > best!!.second) best = "${ea.word} ${eb.word}" to value
+        }
+        for (i in 1 until w.length) consider(w.substring(0, i), w.substring(i), MISSED_SPACE)
+        for (i in 1 until w.length - 1) if (w[i] in ABOVE_SPACE) consider(w.substring(0, i), w.substring(i + 1), SPACE_AS_LETTER)
+        return best
+    }
+
+    /** How common a word must be to be one half of a split: very, when it is short. */
+    private fun halfScore(w: String) = when (w.length) { 1 -> 24; 2 -> 18; 3 -> 14; else -> 10 }
 
     /** The best known words among [cands]: common, and cheap to reach. Best first. */
     private fun pick(cands: Map<String, Float>, maxCost: Float, minScore: Int, max: Int,
-                     weight: Float = COST_WEIGHT): List<String> {
+                     weight: Float = COST_WEIGHT): List<String> =
+        pickScored(cands, maxCost, minScore, max, weight).map { it.first }
+
+    private fun pickScored(cands: Map<String, Float>, maxCost: Float, minScore: Int, max: Int,
+                           weight: Float = COST_WEIGHT): List<Pair<String, Float>> {
         val found = ArrayList<Pair<Entry, Float>>()
         for ((s, cost) in cands) {
             if (cost > maxCost) continue
@@ -184,7 +226,7 @@ class Corrector(lines: Sequence<String>) {
             if (e.score < minScore) continue
             found += e to (e.score - weight * cost)
         }
-        return found.sortedByDescending { it.second }.take(max).map { it.first.word }
+        return found.sortedByDescending { it.second }.take(max).map { it.first.word to it.second }
     }
 
     /** Every spelling one slip away from [w], with what the slip costs, into [out]. */
@@ -240,6 +282,14 @@ class Corrector(lines: Sequence<String>) {
         private const val COST_WEIGHT = 4f
         private const val ALPHABET = "abcdefghijklmnopqrstuvwxyz"
         private const val VOWELS = "aeiouy"
+        /** The letters right above the space bar, which a thumb reaching for it hits instead. */
+        private const val ABOVE_SPACE = "cvbn"
+        /** Running two words together costs about what a slip onto the next key does... */
+        private const val MISSED_SPACE = 0.6f
+        /** ...and hitting a letter for the space more, since it adds a wrong letter... */
+        private const val SPACE_AS_LETTER = 1.2f
+        /** ...and more again when the second word isn't one that commonly follows the first. */
+        private const val UNPAIRED = 1.5f
 
         /**
          * Key positions on the Pre, whose rows sit in matching columns: A is under Q, and Z

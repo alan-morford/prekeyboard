@@ -44,6 +44,13 @@ class NextWords(lines: Sequence<String>) {
         return out.take(max)
     }
 
+    /**
+     * [word] is one of the words that commonly follow [context]. The common list only, which
+     * never changes, so the suggestion thread can ask while the keyboard learns.
+     */
+    fun follows(context: String, word: String): Boolean =
+        common[context]?.any { it.equals(word, ignoreCase = true) } == true
+
     /** The owner typed [word] after [context]. */
     fun learn(context: String, word: String) {
         val m = owned.getOrPut(context) { HashMap() }

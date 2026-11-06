@@ -6,7 +6,9 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.SharedPreferences
 import android.inputmethodservice.InputMethodService
+import android.graphics.Matrix
 import android.graphics.Paint
+import android.graphics.RectF
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
@@ -15,9 +17,14 @@ import android.os.SystemClock
 import android.util.Log
 import android.text.InputType
 import android.view.KeyEvent
+import android.view.Gravity
 import android.view.View
+import android.view.inputmethod.CursorAnchorInfo
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.ExtractedTextRequest
+import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
+import android.widget.FrameLayout
 import java.io.File
 
 /**
@@ -65,6 +72,11 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         Settings.prefs(this).registerOnSharedPreferenceChangeListener(this)
         clipboard.addPrimaryClipChangedListener(clipChanged)
         composer.onLearned = { Settings.addLearned(this, it); decoder?.add(it, LEARNED_SCORE) }
+        composer.onCorrected = { fixed, tail ->
+            Haptics.corrected(this)
+            // Once the whole key's work is done: then the word is marked.
+            main.post { markCorrection(fixed, tail + newlineAfter); newlineAfter = 0 }
+        }
         // The dictionary is 88,000 words: read it off the main thread, and correct nothing until
         // it is in.
         val app = applicationContext
@@ -83,8 +95,28 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
             }
             val nw = app.assets.open("next_words.txt").bufferedReader(Charsets.UTF_8).useLines { NextWords(it) }
             runCatching { File(app.filesDir, NEXT_WORDS_FILE).takeIf { it.exists() }?.useLines { nw.load(it) } }
-            main.post { composer.corrector = c; decoder = d; emojiWords = ew; nextWords = nw; refreshBar() }
+            main.post {
+                c.follows = nw::follows
+                composer.corrector = c; decoder = d; emojiWords = ew; nextWords = nw
+                learnedNow = learned
+                syncLearned()
+                refreshBar()
+            }
         }.apply { name = "dictionary"; isDaemon = true }.start()
+    }
+
+    /** The owner's words the corrector and the decoder were last given. */
+    private var learnedNow: Set<String> = emptySet()
+
+    /** Words added or taken out in the dictionary screen (or added here): the keyboard follows. */
+    private fun syncLearned() {
+        val c = composer.corrector ?: return
+        val d = decoder ?: return
+        val now = Settings.learned(this)
+        for (w in learnedNow - now) { c.unlearn(w); d.remove(w) }
+        for (w in now - learnedNow) { c.learn(w); d.add(w, LEARNED_SCORE) }
+        learnedNow = now
+        refreshBar()
     }
 
     override fun onDestroy() {
@@ -100,16 +132,37 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
     /** A setting changed - in the setup screen, or by long-pressing the orange key or globe: show it now. */
     override fun onSharedPreferenceChanged(prefs: SharedPreferences?, key: String?) {
         if (key == Settings.VOICE_PENDING) return
+        if (key == Settings.LEARNED) { syncLearned(); return }
         view?.apply(Settings.read(this))
         refreshBar()
     }
 
-    override fun onCreateInputView(): View = KeyboardView(this, this).also { view = it }
+    /**
+     * The keys at the bottom of a view as tall as the window allows, under the transparent
+     * layer that draws the corrected words' dashes over the app. Only the keys take touches,
+     * and only they push the app up ([onComputeInsets]).
+     */
+    override fun onCreateInputView(): View {
+        val kb = KeyboardView(this, this)
+        val layer = MarkLayer(this)
+        val frame = object : FrameLayout(this) {
+            override fun onMeasure(widthSpec: Int, heightSpec: Int) {
+                val h = MeasureSpec.getSize(heightSpec).takeIf { it > 0 } ?: resources.displayMetrics.heightPixels
+                super.onMeasure(widthSpec, MeasureSpec.makeMeasureSpec(h, MeasureSpec.EXACTLY))
+            }
+        }
+        frame.addView(layer, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        frame.addView(kb, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
+        view = kb
+        marks = layer
+        return frame
+    }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         editor = info
         composer.reset()
+        clearMarks()
         // Where the cursor is as the field opens, the owner put it (or left it): a word it
         // touches gets alternatives, as a word tapped would.
         tapped = true
@@ -129,6 +182,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
+        clearMarks()
         voice.stop(now = true)
         deleting = false
         saveNextWords()
@@ -142,6 +196,128 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         val text = nw.save()
         val file = File(filesDir, NEXT_WORDS_FILE)
         Thread { runCatching { File(file.path + ".new").apply { writeText(text) }.renameTo(file) } }.start()
+    }
+
+    // --- Corrected words: the orange dashes ------------------------------------------------
+
+    private var marks: MarkLayer? = null
+    /** Return went in as a new line after the word it finished: one more character past it. */
+    private var newlineAfter = 0
+
+    /** A correction marked as composing text, waiting for the field to say where it is. */
+    private class Pending(val start: Int, val text: String, val timeout: Runnable)
+    private var pending: Pending? = null
+
+    /**
+     * Autocorrect just made [fixed], [tail] characters before the cursor. To learn where it is
+     * on screen, it is made the composing text for a moment: a field says where its composing
+     * text is (CursorAnchorInfo), and nothing else. Once it has said, or after a short wait,
+     * the word is plain text again ([settle]).
+     */
+    private fun markCorrection(fixed: String, tail: Int) {
+        settle()
+        val ic = currentInputConnection ?: return
+        if (marks == null) return
+        val before = ic.getTextBeforeCursor(fixed.length + tail, 0)?.toString() ?: return
+        if (before.length != fixed.length + tail || !before.startsWith(fixed)) return
+        val cursor = cursorPosition(ic) ?: return
+        val start = cursor - tail - fixed.length
+        if (start < 0) return
+        ownEdit()
+        if (!ic.setComposingRegion(start, start + fixed.length)) return
+        val timeout = Runnable { settle() }
+        pending = Pending(start, fixed, timeout)
+        ic.requestCursorUpdates(InputConnection.CURSOR_UPDATE_IMMEDIATE or InputConnection.CURSOR_UPDATE_MONITOR)
+        main.postDelayed(timeout, ANCHOR_WAIT_MS)
+    }
+
+    /** Where the cursor is in the whole text: the one thing the keyboard isn't told for sure. */
+    private fun cursorPosition(ic: InputConnection): Int? {
+        if (Build.VERSION.SDK_INT >= 31) {
+            runCatching { ic.getSurroundingText(0, 0, 0) }.getOrNull()?.let { if (it.offset >= 0) return it.offset + it.selectionEnd }
+        }
+        val et = runCatching { ic.getExtractedText(ExtractedTextRequest(), 0) }.getOrNull() ?: return null
+        if (et.selectionEnd < 0) return null
+        return et.startOffset + et.selectionEnd
+    }
+
+    /**
+     * The correction being measured is plain text again, and marked if [box] says where it is.
+     * Called before anything else the keyboard does to the text, since text committed while
+     * a word is composing would replace it.
+     */
+    private fun settle(box: RectF? = null) {
+        val p = pending ?: return
+        pending = null
+        main.removeCallbacks(p.timeout)
+        ownEdit()
+        currentInputConnection?.finishComposingText()
+        if (box != null) marks?.add(MarkLayer.Mark(p.start, p.text, box))
+        else if (marks?.marks.isNullOrEmpty()) stopFollowing()
+    }
+
+    /** No marks left to keep in place: the field needn't report every move. */
+    private fun stopFollowing() { currentInputConnection?.requestCursorUpdates(0) }
+
+    private fun clearMarks() {
+        pending?.let { main.removeCallbacks(it.timeout) }
+        pending = null
+        if (marks?.marks?.isNotEmpty() == true) { marks?.clear(); stopFollowing() }
+    }
+
+    override fun onUpdateCursorAnchorInfo(info: CursorAnchorInfo) {
+        val layer = marks ?: return
+        val p = pending
+        if (p != null && info.composingTextStart == p.start && info.composingText?.toString() == p.text) {
+            var box: RectF? = null
+            for (i in p.text.indices) {
+                val r = info.getCharacterBounds(p.start + i) ?: continue
+                if (box == null) box = RectF(r) else box.union(r)
+            }
+            if (box != null) {
+                // The line under the letters: the baseline when the field says where it is on
+                // this line (Chrome reports the line's bottom instead), else a fifth of the
+                // line up from its bottom, where fonts put it; then a hair below.
+                val base = info.insertionMarkerBaseline
+                val sameLine = !base.isNaN() && Math.abs(info.insertionMarkerBottom - box.bottom) < 1f &&
+                    base < info.insertionMarkerBottom - 0.5f
+                val line = box.height()
+                box.bottom = (if (sameLine) base else box.bottom - line * 0.2f) + line * 0.08f
+            }
+            layer.fieldMatrix = Matrix(info.matrix)
+            settle(box)
+            return
+        }
+        // The field moved or scrolled: the marks follow it.
+        if (layer.marks.isNotEmpty()) layer.fieldMatrix = Matrix(info.matrix)
+    }
+
+    /**
+     * A mark the cursor is at or before may have been typed over, deleted or moved along by
+     * new text: each such one is checked against the text, and dropped unless it still holds
+     * its word. Marks well behind the cursor can't have changed, since editing happens at it.
+     */
+    private fun checkMarks(cursor: Int) {
+        val layer = marks ?: return
+        if (layer.marks.isEmpty() || pending != null) return
+        val ic = currentInputConnection ?: return
+        val gone = layer.marks.filter { m ->
+            if (m.end < cursor - 1) return@filter false
+            val ok = when {
+                m.end - cursor > MAX_MARK_REACH || cursor - m.start > MAX_MARK_REACH -> false
+                cursor >= m.end -> ic.getTextBeforeCursor(cursor - m.start, 0)?.toString()
+                    ?.let { it.length == cursor - m.start && it.startsWith(m.text) } == true
+                cursor <= m.start -> ic.getTextAfterCursor(m.end - cursor, 0)?.toString()
+                    ?.let { it.length == m.end - cursor && it.endsWith(m.text) } == true
+                else -> (ic.getTextBeforeCursor(cursor - m.start, 0)?.toString() +
+                    ic.getTextAfterCursor(m.end - cursor, 0)?.toString()) == m.text
+            }
+            !ok
+        }
+        if (gone.isNotEmpty()) {
+            layer.remove(gone)
+            if (layer.marks.isEmpty()) stopFollowing()
+        }
     }
 
     // --- Paste ------------------------------------------------------------------------------
@@ -194,6 +370,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
     }
 
     override fun onPaste() {
+        settle()
         val t = clipText()
         pasted()
         if (t == null) return
@@ -236,6 +413,8 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
     override fun onUpdateSelection(oldSelStart: Int, oldSelEnd: Int, newSelStart: Int, newSelEnd: Int,
                                    candidatesStart: Int, candidatesEnd: Int) {
         super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd)
+        swipeLikely = null
+        checkMarks(newSelStart)
         // A selection, or the cursor taken elsewhere: the keyboard's last space is now ordinary.
         if (newSelStart != newSelEnd) composer.forget()
         // The cursor moved, and not by anything the keyboard did: the owner tapped the text.
@@ -420,6 +599,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
     }
 
     override fun onPick(i: Int) {
+        settle()
         val word = bar.getOrNull(i)?.takeIf { it.isNotEmpty() } ?: return
         val at = barWord
         if (at != null) { replaceTapped(at, word); return }
@@ -487,10 +667,11 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         val d = decoder ?: return
         val layout = view?.swipeLayout() ?: return
         val gen = ++liveGeneration
+        val likely = swipeContext()
         liveHandler.removeCallbacksAndMessages(null)
         liveHandler.post {
             if (gen != liveGeneration) return@post
-            val found = d.decode(xs, ys, layout).map { cased(it, caps) }
+            val found = d.decode(xs, ys, layout, likely = likely, stale = { gen != liveGeneration }).map { cased(it, caps) }
             main.post {
                 if (gen != liveGeneration || found.isEmpty()) return@post
                 view?.setSuggestions(listOf(found.getOrElse(1) { "" }, found[0], found.getOrElse(2) { "" }))
@@ -499,12 +680,14 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
     }
 
     override fun onSwipe(xs: FloatArray, ys: FloatArray, caps: Int) {
+        settle()
         liveGeneration++
         liveHandler.removeCallbacksAndMessages(null)
-        val d = decoder ?: return
-        val layout = view?.swipeLayout() ?: return
+        val d = decoder ?: run { swipeLikely = null; return }
+        val layout = view?.swipeLayout() ?: run { swipeLikely = null; return }
         val start = SystemClock.uptimeMillis()
-        val found = d.decode(xs, ys, layout)
+        val found = d.decode(xs, ys, layout, likely = swipeContext())
+        swipeLikely = null
         Log.d(TAG, "swipe: ${xs.size} points, ${SystemClock.uptimeMillis() - start} ms, $found")
         if (found.isEmpty()) { refreshBar(); return }
         ownEdit()
@@ -512,6 +695,18 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         composer.swipe(swipeGuesses[0], rules())
         learnPair()
         refreshBar()
+    }
+
+    /**
+     * The words that often come next after the text before the cursor, for the swipe decoder:
+     * looked up once a swipe, as it starts, since the text can't change while it goes on.
+     */
+    private var swipeLikely: List<String>? = null
+
+    private fun swipeContext(): List<String> = swipeLikely ?: run {
+        val nw = nextWords
+        val ctx = composer.nextContext()
+        (if (nw == null || ctx == null) emptyList() else nw.predict(ctx, max = 8)).also { swipeLikely = it }
     }
 
     private fun cased(word: String, caps: Int) = when (caps) {
@@ -523,6 +718,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
     // --- What the keyboard reports ----------------------------------------------------------
 
     override fun onText(text: String) {
+        settle()
         if (voice.on) voice.stop(now = true)
         ownEdit()
         composer.type(text, rules())
@@ -530,6 +726,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
     }
 
     override fun onBackspace(word: Boolean) {
+        settle()
         if (voice.on) voice.stop(now = true)
         ownEdit()
         deletes++
@@ -544,6 +741,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
     }
 
     override fun onEnter() {
+        settle()
         if (voice.on) voice.stop(now = true)
         ownEdit()
         composer.beforeEnter(rules())
@@ -553,7 +751,12 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         val plain = action == EditorInfo.IME_ACTION_NONE || action == EditorInfo.IME_ACTION_UNSPECIFIED ||
             options and EditorInfo.IME_FLAG_NO_ENTER_ACTION != 0 ||
             (info?.inputType ?: 0) and InputType.TYPE_TEXT_FLAG_MULTI_LINE != 0
-        if (plain) sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER)
+        if (plain) {
+            sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER)
+            // For the correction's mark, queued before this; gone again if there was none.
+            newlineAfter = 1
+            main.post { newlineAfter = 0 }
+        }
         else currentInputConnection?.performEditorAction(action)
     }
 
@@ -563,6 +766,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
     }
 
     override fun onCursor(dx: Int, dy: Int, select: Boolean) {
+        settle()
         composer.forget()
         ownEdit()
         val code = when {
@@ -604,6 +808,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
 
     private val voiceOut: Voice.Out = object : Voice.Out {
         override fun partial(text: String) {
+            settle()
             val ic = currentInputConnection ?: return
             if (text.isEmpty()) {
                 if (voiceComposing) { ic.setComposingText("", 1); ic.finishComposingText(); voiceComposing = false }
@@ -615,6 +820,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         }
 
         override fun final(text: String) {
+            settle()
             val ic = currentInputConnection ?: return
             ownEdit()
             if (!voiceComposing) { voiceStart(); composer.forget() }
@@ -642,6 +848,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
      * keyboard (Google voice typing, say) is switched to instead, if there is one.
      */
     override fun onVoice() {
+        settle()
         if (voice.on) { voice.stop(); return }
         if (!voice.available()) {
             if (!switchToVoiceKeyboard()) view?.voiceLine = "No speech input on this device"
@@ -683,6 +890,10 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         private const val OWN_EDIT_MS = 400L
         private const val CLIP_DONE = "passed"
         private const val NEXT_WORDS_FILE = "next_words_mine.txt"
+        /** How long a correction waits to be told where it is on screen, before it goes unmarked. */
+        private const val ANCHOR_WAIT_MS = 400L
+        /** Farther than this from the cursor, a mark isn't looked for in the text: it's dropped. */
+        private const val MAX_MARK_REACH = 2000
         /** EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING (API 26): an incognito field. */
         private const val NO_LEARNING = 0x1000000
         private val NOT_PROSE = setOf(

@@ -21,20 +21,24 @@ TouchPad keyboard. It shares no code with either.
 - The Pre's layout key for key: four rows in matching columns, the orange key, Sym, and every
   key's alternate printed where the Pre printed it
 - Two styles, **Orange** and **White**: hold the globe on the Sym page to switch on the fly
-- **Swipe to type**, with the word you would get shown as you swipe, and the next likeliest
-  guesses one tap away
+- **Swipe to type**, forgiving of quick, rough swipes, with the word you would get shown as
+  you swipe, and the next likeliest guesses one tap away
 - **Suggestion bar**: three words above the keys, the likeliest in the middle in orange, and
   if you like, an emoji for the word on the right (`pizza` → 🍕)
 - **Next-word suggestions**: before you start a word, the bar offers the three likeliest next
   words (`I` → `don't`, `think`, `know`), learning the ones you use
-- **Your own words**: hold a word in the bar to add it to the dictionary
+- **Your own words**: hold a word in the bar to add it to the dictionary, and see, add or
+  remove them in the app
 - **Speech input**: hold the period and talk
 - **Paste**: copy or cut something and a clipboard icon waits in the bar's right-hand place
   until you tap it to paste
 - **Fix a word**: tap a word in the text and the bar offers what else it might be (`ball` →
   `bell`, `bill`, `bull`); tap one and it takes the word's place
-- **Autocorrect** for typos and for contractions (`dont` → `don't`), undone by the next
-  backspace, and learning the words you keep
+- **Autocorrect** for typos, for contractions (`dont` → `don't`) and for words run together
+  (`theynare` → `they are`), each change marked with
+  an orange dashed underline and a light buzz, undone by the next backspace, and learning the
+  words you keep
+- **Vibrate on keys**, if you like: a light tap as each key goes down
 - **Double-space period**, and a period that brings its own space
 - **Emoji**: every emoji your phone can draw, by category, with your recent ones first
 - **Hold for more**: accents and extra symbols on a long press, each such key marked with a
@@ -55,20 +59,20 @@ TouchPad keyboard. It shares no code with either.
   to lock it on; tap again to let go. **Shift** works the same way, and lights orange while
   the next letter will be a capital. Hold the orange key to turn **Hold for more** on or off.
 - **Sym** opens the digits and the symbols the letters page doesn't have: `[ ] { } < > ^ ~ | \`,
-  `` ` ° £ × ÷ ± ≠ ¡ `` and `—`, nothing repeated from the letters. With Hold for more on,
+  `` ` ° £ × ÷ ± ≠ ¡ ``, nothing repeated from the letters but the period. With Hold for more on,
   hold a key for more still: curly quotes on `` ` ``, `« » ≤ ≥` on `<` and `>`, currencies on
-  `£`, `√ ∞` on `÷`, superscripts and fractions on the digits. On that page, the **globe** asks
+  `£`, `√ ∞` on `÷`, the long and short dashes `— –` on S, `¬` on `|`, superscripts and fractions on the digits. On that page, the **globe** asks
   which keyboard to use (hold it to switch between the Orange and White styles) and the
   **smiley** opens the emoji (with Hold for more on, hold it for the text emoticons, `:-)` and
   friends). The bottom row keeps its shape between the two pages, so no key moves under your
-  thumb: ABC where shift is, the smiley where `@` is, `—` where the period is, return where
+  thumb: ABC where shift is, the smiley where `@` is, the period where the period is, return where
   Sym is. Hold that return (the one with the gear) to open the Pre Keyboard app.
 - **Period**: it brings a space with it. Backspace straight after takes just the space; a
   space typed out of habit isn't doubled; `?`, `,` or another period go against the word.
   No space in numbers (`3.14`), web or email addresses, or fields that aren't for words.
   It sits in the column of I, K and M, with a microphone in its corner.
 - **Speech input**: hold the period (a tap is always just a period). The
-  microphone lights orange and the bar says "Listening…"; the words go into the field as you
+  microphone lights up in a white disc and the bar says "Listening…"; the words go into the field as you
   say them. Tap the bar (or hold the period again) to stop; a pause stops it too, and typing
   any key does. The first time, Android asks to let Pre Keyboard use the microphone. It uses
   the phone's own speech recogniser (Google's, on most phones).
@@ -83,7 +87,11 @@ TouchPad keyboard. It shares no code with either.
 - **Hold the space bar** and slide: the cursor follows your finger, left and right a character
   at a time, up and down a line at a time. With shift on, it selects as it goes.
 - **Hold backspace** and it repeats, then starts taking whole words. The suggestion bar waits
-  while it does, so deleting never slows down.
+  while it does, so deleting never slows down. Slide off it and it stops: nothing more happens
+  until you lift, so letting go over a letter doesn't type it. Backspace only works where the
+  finger landed; sliding onto it from a letter cancels that letter.
+- **Quick typing**: when the next finger lands before the last one lifts, the first key is
+  typed then and the second goes on as its own tap, never mistaken for a swipe.
 - **The comma**, with Hold for more on, holds `… • ¿` (the period's list, before the period
   became speech input).
 - **Swipe** (when switched on): slide across the letters and lift at the end of the word. The
@@ -93,6 +101,9 @@ TouchPad keyboard. It shares no code with either.
   guesses, and tapping one swaps it in. Backspace straight after a swipe takes the whole word
   and its space. Taps still type letters as usual, and the word before a swipe is corrected
   as a space would correct it (a lone `i` becomes `I`). Swiping works in search boxes too.
+  Quick swipes needn't be careful: corners cut short, a letter only passed near, or a start
+  and finish a little off still find the word, and when two words fit the path about equally
+  (`of`, `if`), the one that usually follows the word before wins.
 
 ## Settings
 
@@ -103,9 +114,13 @@ the keyboard on screen.
 - **Height**: Small, Medium or Large rows.
 - **Autocorrect** (on by default): fixes typos when you finish a word, and puts the apostrophe
   in contractions - `dont` becomes `don't`, `im` becomes `I'm`, a lone `i` becomes `I`. Words
-  that are real words as they are (`well`, `were`, `its`, `ill`) are left alone. Backspace
+  that are real words as they are (`well`, `were`, `its`, `ill`) are left alone. Two words
+  whose space was missed, or hit as the C, V, B or N just above it, come apart: `theyare`
+  and `theynare` both become `they are`. Backspace
   straight after a correction puts back what you typed, and the keyboard remembers that word
-  from then on. It stays out of passwords, email addresses and web addresses.
+  from then on. A corrected word gets an orange dashed underline and the phone buzzes lightly,
+  so you can see what changed; the line stays while the word does, until you leave the field.
+  It stays out of passwords, email addresses and web addresses.
 - **Double-space period** (on by default): two quick spaces after a word type `. `.
 - **Suggestion bar** (off by default): three words above the keys as you type. The middle one,
   in orange, is the likeliest - what the space bar would make of your word. On the left is the
@@ -124,14 +139,27 @@ the keyboard on screen.
   It brings the suggestion bar with it.
 - **Hold for more** (off by default): hold a key for its accents and extra symbols; keys that
   have them show a small dot. Holding the orange key turns it on or off too.
+- **Vibrate on keys** (off by default): a light tap of the vibrator as each key goes down.
+- **Edit dictionary**: the words you added (by holding them in the bar, or by undoing a
+  correction), each with **Remove**, and a field to add one. Autocorrect leaves these words
+  alone and swiping can spell them; a word you remove is corrected again.
 - **Updates**: shows the version, with **Check now**. The keyboard itself looks for a new
   release on GitHub once a day, when it comes up, and says so in the bar above the keys; tap
   that for the release notes, then **Install** or **Later** (asked again a day later). The
   first install asks you to let Pre Keyboard install apps.
 
-Swipe matching follows the location channel of Kristensson and Zhai's SHARK² (2004): the
-finger's path is compared, point for point, with each candidate word's path through its keys,
-and the distance is weighed against how common the word is.
+Swipe matching builds on the location channel of Kristensson and Zhai's SHARK² (2004): the
+finger's path is compared with each candidate word's path through its keys, and the distance
+is weighed against how common the word is. A quick finger is sloppy in known ways, so no
+single slip rules a word out: half the distance is point for point, half lined up elastically
+(dynamic time warping), and letters the path misses, sharp turns away from the word's letters
+and a path much longer than the word's each cost a little. The weights were tuned on simulated
+quick swipes over the 400 commonest words (`SwipeBenchTest`).
+
+The orange underline is drawn the way LunaKeyboard (in
+[Lunacy](https://github.com/webOSArchive/Lunacy)) draws webOS's dotted line: a keyboard can't
+draw inside another app's field, so its transparent window reaches up over the app, and the
+corrected word is made the composing text for a moment so the field says where it is.
 
 ## Installing
 

@@ -12,9 +12,9 @@ class KeymapTest {
         }
 
     @Test
-    fun symPageRepeatsNothingFromTheLettersPageButDigits() {
+    fun symPageRepeatsNothingFromTheLettersPageButDigitsAndThePeriod() {
         val letters = typed(Keymap.letters).toSet()
-        val repeated = typed(Keymap.symbols).filter { it in letters && !(it.length == 1 && it[0].isDigit()) }
+        val repeated = typed(Keymap.symbols).filter { it in letters && it != "." && !(it.length == 1 && it[0].isDigit()) }
         assertEquals(emptyList<String>(), repeated)
     }
 

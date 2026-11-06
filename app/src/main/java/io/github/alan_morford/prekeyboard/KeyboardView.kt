@@ -298,9 +298,8 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
     }
 
     /**
-     * The small icon in a key's top right corner, the size of a printed alternate and in the
-     * style's colour, like the digits. While listening, the microphone sits in a disc of that
-     * colour.
+     * The small icon in a key's top right corner, the size of a printed alternate, always
+     * white. While listening, the microphone sits in a white disc.
      */
     private fun cornerIcon(c: Canvas, corner: Corner, r: RectF) {
         val size = letterSize() * 0.62f
@@ -309,11 +308,11 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         val cy = r.top + i + size / 2 - size * 0.08f
         when (corner) {
             Corner.MIC -> if (listening) {
-                dotPaint.color = style.accent
+                dotPaint.color = Color.WHITE
                 c.drawCircle(cx, cy, size * 0.62f, dotPaint)
                 painter.icon(c, Painter.Icon.MIC, cx, cy, size * 0.8f, Color.rgb(0x16, 0x18, 0x1A))
-            } else painter.icon(c, Painter.Icon.MIC, cx, cy, size, style.accent)
-            Corner.GEAR -> painter.icon(c, Painter.Icon.GEAR, cx, cy, size * 0.9f, style.accent)
+            } else painter.icon(c, Painter.Icon.MIC, cx, cy, size, Color.WHITE)
+            Corner.GEAR -> painter.icon(c, Painter.Icon.GEAR, cx, cy, size * 0.9f, Color.WHITE)
         }
     }
 
@@ -356,16 +355,15 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         val a = key.alt
         if (a == null && key.corner != null) {
             // The period, printed as I, K and M are, low and to the left of its corner icon.
+            // It has no alternate, so the orange key doesn't dim it.
             text.textSize = size
             text.color = Color.WHITE
-            text.alpha = if (alt != Alt.OFF) 89 else 255
             text.getTextBounds("H", 0, 1, ink)
             var baseline = r.bottom - inset(r) - ink.bottom
             text.getTextBounds(letter, 0, letter.length, ink)
             baseline = Math.min(baseline, r.bottom - inset(r) - ink.bottom)
             val lx = r.centerX() - r.width() * LETTER_NUDGE - text.measureText(letter) / 2
             c.drawText(letter, lx, baseline, text)
-            text.alpha = 255
             return
         }
         if (a == null) {
@@ -383,7 +381,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         // Every letter sits on one baseline, taken from a flat-bottomed capital, so Q's tail
         // hangs below the line instead of lifting the Q. As on the Pre, a letter is centred
         // in its key by its advance (not its ink, which Q's tail widens), nudged a little
-        // away from its alternate. The "@0" key keeps the two side by side.
+        // away from its alternate.
         // Only a letter hangs, though: a comma's tail or the @'s bowl would reach the key's
         // edge, so a symbol is lifted until its ink rests on the letters' bottom line.
         text.getTextBounds("H", 0, 1, ink)
@@ -392,19 +390,14 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
             text.getTextBounds(letter, 0, letter.length, ink)
             baseline = Math.min(baseline, r.bottom - i - ink.bottom)
         }
-        val lx = if (key.altPos == AltPos.INLINE) {
-            text.getTextBounds(letter, 0, letter.length, ink)
-            r.left + i - ink.left
-        } else {
-            val nudge = r.width() * LETTER_NUDGE * (if (altLeft) 1 else -1)
-            r.centerX() + nudge - text.measureText(letter) / 2
-        }
+        val nudge = r.width() * LETTER_NUDGE * (if (altLeft) 1 else -1)
+        val lx = r.centerX() + nudge - text.measureText(letter) / 2
         c.drawText(letter, lx, baseline, text)
         text.alpha = 255
 
         // The alternate, in the top corner: its edge meets the inset, and it is centred on a
         // capital's height there, so "-" and "'" line up with the digits.
-        val asize = size * (if (key.altPos == AltPos.INLINE) 0.85f else 0.7f)
+        val asize = size * 0.7f
         text.textSize = asize
         text.color = if (a.length == 1 && a[0].isDigit()) style.accent else Color.WHITE
         text.getTextBounds(a, 0, a.length, ink)
@@ -680,7 +673,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
             MotionEvent.ACTION_DOWN -> {
                 askDown = true
                 askPressed = askHit(e.x, e.y)
-                if (askPressed != 0) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                if (askPressed != 0) keyFeedback()
             }
             MotionEvent.ACTION_UP -> if (askDown) {
                 val word = asking
@@ -891,7 +884,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         if (page == Page.EMOJI) {
             if (e.actionMasked == MotionEvent.ACTION_DOWN) {
                 if (e.y < keyboardTop()) return false
-                performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                keyFeedback()
             }
             return emoji.onTouch(e)
         }
@@ -903,7 +896,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     barPressed = barCell(x, y)
-                    if (voiceLine != null || showingNotice || words[barPressed].isNotEmpty() || pasteAt(barPressed)) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    if (voiceLine != null || showingNotice || words[barPressed].isNotEmpty() || pasteAt(barPressed)) keyFeedback()
                     handler.postDelayed(barHold, HOLD_FOR_ADD)
                 }
                 MotionEvent.ACTION_UP -> {
@@ -922,63 +915,125 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         }
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                val z = zoneAt(x, y) ?: return false
-                downX = x; downY = y
-                performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                press(z)
-                swiping = false
-                swipeMaybe = canSwipe(z)
-                swipeN = 0
-                if (swipeMaybe) addSwipePoint(x, y)
+                finger = e.getPointerId(0)
+                if (!down(x, y)) { finger = NO_FINGER; return false }
+            }
+            // Typing quickly, the next finger lands before the last one lifts. The key under
+            // the first is typed then, as if it had lifted, and the new finger's press begins;
+            // a finger that lands during a swipe, a hold or the accents is ignored.
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                if (swiping || cursorMode || extended != null || held) return true
+                val i = e.actionIndex
+                lift(up = true)
+                finger = e.getPointerId(i)
+                if (!down(e.getX(i), e.getY(i))) finger = NO_FINGER
             }
             MotionEvent.ACTION_MOVE -> {
-                if (cursorMode) { moveCursor(x, y); return true }
-                if (swipeMaybe && extended == null && !held) {
-                    for (h in 0 until e.historySize) addSwipePoint(e.getHistoricalX(h), e.getHistoricalY(h))
-                    addSwipePoint(x, y)
-                    if (!swiping && Math.hypot((x - downX).toDouble(), (y - downY).toDouble()) > swipeStart()) {
-                        // Off the first key and on its way: a swipe, not a tap.
-                        swiping = true
-                        handler.removeCallbacks(hold)
-                        pressed = null; preview = null
-                    }
-                    if (swiping) {
-                        if (e.eventTime - lastLive >= LIVE_EVERY) {
-                            lastLive = e.eventTime
-                            host.onSwipeProgress(swipeX.copyOf(swipeN), swipeY.copyOf(swipeN), capsNow())
-                        }
-                        invalidate()
-                        return true
-                    }
-                }
-                if (extended != null) {
-                    val i = extendedAt(x, y)
-                    if (i != extendedIndex) { extendedIndex = i; invalidate() }
-                    return true
-                }
-                if (held) return true
-                // Sliding off a key onto another moves the press, as webOS allowed.
-                val z = zoneAt(x, y)
-                if (z?.key !== pressed?.key) press(z)
+                val i = e.findPointerIndex(finger)
+                if (i < 0) return true
+                move(e, i)
             }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                handler.removeCallbacks(hold); stopRepeat()
-                if (swiping) {
-                    if (e.actionMasked == MotionEvent.ACTION_UP) {
-                        addSwipePoint(x, y)
-                        host.onSwipe(swipeX.copyOf(swipeN), swipeY.copyOf(swipeN), capsNow())
-                        if (shift == Shift.ONCE) { shift = Shift.OFF; autoShift = false; lastShiftTap = NEVER }
-                    }
-                    pressed = null
-                } else if (e.actionMasked == MotionEvent.ACTION_UP) commit()
-                swiping = false; swipeMaybe = false; swipeN = 0
-                extended = null; extendedFrame = null
-                cursorMode = false; held = false
-                pressed = null; preview = null
-                invalidate()
+            MotionEvent.ACTION_POINTER_UP -> if (e.getPointerId(e.actionIndex) == finger) {
+                val i = e.actionIndex
+                if (swiping) addSwipePoint(e.getX(i), e.getY(i))
+                lift(up = true)
+                finger = NO_FINGER
             }
+            MotionEvent.ACTION_UP -> {
+                if (e.getPointerId(0) == finger) {
+                    if (swiping) addSwipePoint(x, y)
+                    lift(up = true)
+                } else lift(up = false)
+                finger = NO_FINGER
+            }
+            MotionEvent.ACTION_CANCEL -> { lift(up = false); finger = NO_FINGER }
         }
         return true
+    }
+
+    /** A key went down: a light tap of the vibrator, when the owner has asked for it. */
+    private fun keyFeedback() { if (settings.vibrate) Haptics.key(context) }
+
+    /** The finger whose press is being followed; another one down at the same time is someone else's tap. */
+    private var finger = NO_FINGER
+    /**
+     * The press started on backspace and the finger slid off it, or slid onto it from another
+     * key: nothing more happens till it lifts, so letting go over a letter doesn't type it.
+     */
+    private var spent = false
+
+    /** A finger landed at [x], [y]: false when it isn't on a key. */
+    private fun down(x: Float, y: Float): Boolean {
+        val z = zoneAt(x, y) ?: return false
+        downX = x; downY = y
+        keyFeedback()
+        spent = false
+        press(z)
+        swiping = false
+        swipeMaybe = canSwipe(z)
+        swipeN = 0
+        if (swipeMaybe) addSwipePoint(x, y)
+        return true
+    }
+
+    private fun move(e: MotionEvent, p: Int) {
+        val x = e.getX(p); val y = e.getY(p)
+        if (spent) return
+        if (cursorMode) { moveCursor(x, y); return }
+        if (swipeMaybe && extended == null && !held) {
+            for (h in 0 until e.historySize) addSwipePoint(e.getHistoricalX(p, h), e.getHistoricalY(p, h))
+            addSwipePoint(x, y)
+            if (!swiping && Math.hypot((x - downX).toDouble(), (y - downY).toDouble()) > swipeStart()) {
+                // Off the first key and on its way: a swipe, not a tap.
+                swiping = true
+                handler.removeCallbacks(hold)
+                pressed = null; preview = null
+            }
+            if (swiping) {
+                if (e.eventTime - lastLive >= LIVE_EVERY) {
+                    lastLive = e.eventTime
+                    host.onSwipeProgress(swipeX.copyOf(swipeN), swipeY.copyOf(swipeN), capsNow())
+                }
+                invalidate()
+                return
+            }
+        }
+        if (extended != null) {
+            val i = extendedAt(x, y)
+            if (i != extendedIndex) { extendedIndex = i; invalidate() }
+            return
+        }
+        if (held) return
+        val z = zoneAt(x, y)
+        if (z?.key === pressed?.key) return
+        // Off backspace, or onto it from another key: backspace only works where the finger
+        // landed, and the press is over till the finger lifts.
+        if (pressed?.key?.kind == Kind.BACKSPACE || z?.key?.kind == Kind.BACKSPACE) {
+            handler.removeCallbacks(hold); stopRepeat()
+            spent = true
+            pressed = null; preview = null
+            invalidate()
+            return
+        }
+        // Sliding off a key onto another moves the press, as webOS allowed.
+        press(z)
+    }
+
+    /** The finger being followed lifted ([up]), or the touch was called off: finish its press. */
+    private fun lift(up: Boolean) {
+        handler.removeCallbacks(hold); stopRepeat()
+        if (swiping) {
+            if (up) {
+                host.onSwipe(swipeX.copyOf(swipeN), swipeY.copyOf(swipeN), capsNow())
+                if (shift == Shift.ONCE) { shift = Shift.OFF; autoShift = false; lastShiftTap = NEVER }
+            }
+            pressed = null
+        } else if (up && !spent) commit()
+        swiping = false; swipeMaybe = false; swipeN = 0
+        extended = null; extendedFrame = null
+        cursorMode = false; held = false; spent = false
+        pressed = null; preview = null
+        invalidate()
     }
 
     private fun commit() {
@@ -1088,6 +1143,8 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         /** Holding a word in the bar, to add it to the dictionary. */
         private const val HOLD_FOR_ADD = 500L
         private const val CURSOR_STEP_X = 12f
+
+        private const val NO_FINGER = -1
 
         /** No tap yet: far enough back that the next tap is never the second of a pair. */
         private const val NEVER = Long.MIN_VALUE / 2

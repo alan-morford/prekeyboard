@@ -229,4 +229,23 @@ class ComposerTest {
         val again = NextWords(emptySequence()).apply { load(nw.save().lineSequence()) }
         assertEquals(listOf("pizza"), again.predict("want"))
     }
+
+    @Test fun saysWhatItCorrectedAndWhere() {
+        val seen = ArrayList<Pair<String, Int>>()
+        composer.onCorrected = { w, tail -> seen += w to tail }
+        type("teh ")
+        assertEquals(listOf("the" to 1), seen)
+        type("cta.")                              // the period brings its space: two after the word
+        assertEquals("the cat. ", text.toString())
+        assertEquals("cat" to 2, seen.last())
+        type("dont")
+        composer.swipe("know", on)                // the word before a swipe: the swipe's word and spaces after
+        assertEquals("the cat. don't know ", text.toString())
+        assertEquals("don't" to 6, seen.last())
+        type("thsi")
+        composer.beforeEnter(on)
+        assertEquals("this" to 0, seen.last())
+        type(" fine ")
+        assertEquals(4, seen.size)                // a word that needed nothing says nothing
+    }
 }

@@ -13,6 +13,8 @@ class CorrectorTest {
         lateinit var c: Corrector
         @BeforeClass @JvmStatic fun load() {
             c = File("src/main/assets/dictionary.txt").bufferedReader().useLines { Corrector(it) }
+            val nw = File("src/main/assets/next_words.txt").bufferedReader().useLines { NextWords(it) }
+            c.follows = nw::follows
         }
     }
 
@@ -34,6 +36,16 @@ class CorrectorTest {
         fixes("teh", "the"); fixes("hte", "the"); fixes("recieve", "receive"); fixes("adress", "address")
         fixes("becuase", "because"); fixes("tomorow", "tomorrow"); fixes("thsi", "this")
         fixes("Teh", "The"); fixes("keybaord", "keyboard"); fixes("helo", "hello")
+    }
+
+    @Test fun runTogetherWords() {
+        // The space missed, or hit as a letter just above the space bar.
+        fixes("theyare", "they are"); fixes("theynare", "they are"); fixes("inthe", "in the")
+        fixes("iwent", "I went"); fixes("thebdog", "the dog"); fixes("sonmuch", "so much")
+        fixes("Ifnyou", "If you"); fixes("alot", "a lot")
+        // A slip in one word stays one word, and a word stays a word.
+        fixes("basrball", "baseball"); fixes("toon", "too"); fixes("abvout", "about")
+        listOf("welcome", "ashore", "nowhere", "together", "inbox", "notice").forEach { keeps(it) }
     }
 
     @Test fun knownWordsAndOddities() {

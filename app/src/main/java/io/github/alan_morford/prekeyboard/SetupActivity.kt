@@ -80,6 +80,12 @@ class SetupActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
             "symbols (é, ñ, curly quotes, £, ½…). Keys that have them show a small dot. Hold the " +
             "orange key to switch it on or off from the keyboard.",
             { Settings.read(this).holdForMore }) { v -> Settings.update(this) { it.copy(holdForMore = v) } })
+        column.addView(toggle("Vibrate on keys", "A light tap of the vibrator as each key goes down.",
+            { Settings.read(this).vibrate }) { v -> Settings.update(this) { it.copy(vibrate = v) } })
+
+        column.addView(heading("Dictionary"))
+        column.addView(note("Words you added by holding them in the suggestion bar, or kept by undoing a correction."))
+        column.addView(wideButton("Edit dictionary") { startActivity(Intent(this, DictionaryActivity::class.java)) })
 
         column.addView(heading("Updates"))
         column.addView(note("Version ${Updater.installedVersion(this)}. The keyboard looks for a new " +
