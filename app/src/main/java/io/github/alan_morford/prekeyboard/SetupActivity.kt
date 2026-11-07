@@ -40,7 +40,7 @@ class SetupActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
         column.addView(TextView(this).apply {
             text = getString(R.string.app_name)
             textSize = 28f
-            setTextColor(Color.WHITE)
+            setTextColor(ORANGE)
             gravity = Gravity.CENTER
         })
         column.addView(note("The Palm Pre's keyboard. Switch it on, then choose it; " +
@@ -84,7 +84,7 @@ class SetupActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
             { Settings.read(this).vibrate }) { v -> Settings.update(this) { it.copy(vibrate = v) } })
 
         column.addView(heading("Dictionary"))
-        column.addView(note("Words you added by holding them in the suggestion bar, or kept by undoing a correction."))
+        column.addView(note("Words you added by holding them in the suggestion bar, or kept by tapping them as typed in the bar."))
         column.addView(wideButton("Edit dictionary") { startActivity(Intent(this, DictionaryActivity::class.java)) })
 
         column.addView(heading("Updates"))
@@ -105,7 +105,7 @@ class SetupActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
         column.addView(tryIt)
 
         val scroll = ScrollView(this).apply {
-            setBackgroundColor(Color.rgb(0x28, 0x2c, 0x2f))
+            setBackgroundColor(AppLook.PAGE)
             isFillViewport = true
             addView(column)
         }
@@ -148,7 +148,7 @@ class SetupActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
     private fun heading(s: String) = TextView(this).apply {
         text = s
         textSize = 16f
-        setTextColor(Color.WHITE)
+        setTextColor(ORANGE)
         gravity = Gravity.CENTER
         setPadding(0, unit * 2, 0, unit / 2)
     }
@@ -160,7 +160,7 @@ class SetupActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
         setPadding(0, unit / 2, 0, unit / 2)
     }
 
-    /** A row of buttons, the current one lit. */
+    /** A row of buttons, the current one lit in orange. */
     private fun <T> choices(values: List<T>, label: (T) -> String, current: () -> T, set: (T) -> Unit): View {
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
         val buttons = values.map { v ->
@@ -170,7 +170,10 @@ class SetupActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }.also { row.addView(it) }
         }
-        val refresh = { val cur = current(); buttons.forEachIndexed { i, b -> b.alpha = if (values[i] == cur) 1f else 0.45f } }
+        val refresh = {
+            val cur = current()
+            buttons.forEachIndexed { i, b -> if (values[i] == cur) AppLook.main(b) else AppLook.unchosen(b) }
+        }
         refreshers += refresh
         refresh()
         return row
@@ -225,9 +228,14 @@ class SetupActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
 
     private fun wideButton(label: String, onClick: (Button) -> Unit) = Button(this).apply {
         text = label
+        AppLook.action(this)
         setOnClickListener { onClick(this) }
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply { topMargin = unit / 2 }
+    }
+
+    companion object {
+        private val ORANGE = AppLook.ORANGE
     }
 }

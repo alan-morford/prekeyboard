@@ -36,8 +36,7 @@ TouchPad keyboard. It shares no code with either.
   `bell`, `bill`, `bull`); tap one and it takes the word's place
 - **Autocorrect** for typos, for contractions (`dont` → `don't`) and for words run together
   (`theynare` → `they are`), each change marked with
-  an orange dashed underline and a light buzz, undone by the next backspace, and learning the
-  words you keep
+  an orange dashed underline and a light buzz, and undone by the next backspace
 - **Vibrate on keys**, if you like: a light tap as each key goes down
 - **Double-space period**, and a period that brings its own space
 - **Emoji**: every emoji your phone can draw, by category, with your recent ones first
@@ -114,11 +113,14 @@ the keyboard on screen.
 - **Height**: Small, Medium or Large rows.
 - **Autocorrect** (on by default): fixes typos when you finish a word, and puts the apostrophe
   in contractions - `dont` becomes `don't`, `im` becomes `I'm`, a lone `i` becomes `I`. Words
-  that are real words as they are (`well`, `were`, `its`, `ill`) are left alone. Two words
+  that are real words as they are (`well`, `were`, `its`, `ill`) are left alone, with the
+  contraction offered beside them in the bar (`ill`: `I'll`), and the apostrophe put in only
+  where the word before all but settles it: `I think ill` becomes `I think I'll`, while
+  `was ill`, `of its` and a sentence starting `Well` or `Were` stay as typed. Two words
   whose space was missed, or hit as the C, V, B or N just above it, come apart: `theyare`
   and `theynare` both become `they are`. Backspace
-  straight after a correction puts back what you typed, and the keyboard remembers that word
-  from then on. A corrected word gets an orange dashed underline and the phone buzzes lightly,
+  straight after a correction puts back what you typed, without adding it to your dictionary
+  (to keep a word for good, tap it as typed in the bar or hold it there). A corrected word gets an orange dashed underline and the phone buzzes lightly,
   so you can see what changed; the line stays while the word does, until you leave the field.
   It stays out of passwords, email addresses and web addresses.
 - **Double-space period** (on by default): two quick spaces after a word type `. `.
@@ -140,8 +142,8 @@ the keyboard on screen.
 - **Hold for more** (off by default): hold a key for its accents and extra symbols; keys that
   have them show a small dot. Holding the orange key turns it on or off too.
 - **Vibrate on keys** (off by default): a light tap of the vibrator as each key goes down.
-- **Edit dictionary**: the words you added (by holding them in the bar, or by undoing a
-  correction), each with **Remove**, and a field to add one. Autocorrect leaves these words
+- **Edit dictionary**: the words you added (by holding them in the bar, or by tapping them
+  as typed there), each with **Remove**, and a field to add one. Autocorrect leaves these words
   alone and swiping can spell them; a word you remove is corrected again.
 - **Updates**: shows the version, with **Check now**. The keyboard itself looks for a new
   release on GitHub once a day, when it comes up, and says so in the bar above the keys; tap

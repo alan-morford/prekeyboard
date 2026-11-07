@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The app's screens: the device's own dark look, with the Pre's orange where something is
+         on or chosen (switches, the cursor, a field's underline). Style.ORANGE is the same colour.
+         No title bar: each screen's own orange title says what it is. -->
+    <color name="pre_orange">#F2402E</color>
+    <style name="PreTheme" parent="@android:style/Theme.DeviceDefault.NoActionBar">
+        <item name="android:colorAccent">@color/pre_orange</item>
+        <item name="android:colorControlActivated">@color/pre_orange</item>
+    </style>
+    <style name="PreTheme.Dialog" parent="@android:style/Theme.DeviceDefault.Dialog">
+        <item name="android:colorAccent">@color/pre_orange</item>
+        <item name="android:colorControlActivated">@color/pre_orange</item>
+    </style>
+</resources>

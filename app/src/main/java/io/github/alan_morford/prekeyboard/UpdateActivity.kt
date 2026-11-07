@@ -6,7 +6,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.content.res.ColorStateList
 import android.content.pm.PackageInstaller
 import android.graphics.Color
 import android.net.Uri
@@ -73,12 +72,9 @@ class UpdateActivity : Activity() {
             gravity = Gravity.END
             setPadding(0, unit / 2, 0, 0)
         }
-        buttons.addView(button("Later") { Updater.later(this); finish() })
+        buttons.addView(button("Later") { Updater.later(this); finish() }.apply { AppLook.action(this) })
         // Install in the Pre's orange, so it stands out.
-        buttons.addView(button("Install") { install() }.apply {
-            backgroundTintList = ColorStateList.valueOf(Style.ORANGE.accent)
-            setTextColor(Color.WHITE)
-        })
+        buttons.addView(button("Install") { install() }.apply { AppLook.main(this) })
         column.addView(buttons)
         setContentView(column)
         val filter = IntentFilter(ACTION_STATUS)

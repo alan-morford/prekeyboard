@@ -32,7 +32,7 @@ class Composer(private val field: Field, private val clock: () -> Long) {
     class Rules(val autocorrect: Boolean, val doubleSpacePeriod: Boolean, val prose: Boolean = true)
 
     var corrector: Corrector? = null
-    /** Told about a word the owner kept by undoing its correction, so it can be remembered. */
+    /** Told about a word the owner picked as typed over its correction, so it can be remembered. */
     var onLearned: (String) -> Unit = {}
     /**
      * Told when autocorrect changed a word: what it became, and how many characters the
@@ -156,8 +156,10 @@ class Composer(private val field: Field, private val clock: () -> Long) {
     }
 
     /**
-     * Backspace. Straight after a correction it puts back what was typed, separator and all,
-     * and remembers the word; returns true when it did that, false to delete as usual.
+     * Backspace. Straight after a correction it puts back what was typed, separator and all;
+     * returns true when it did that, false to delete as usual. The word isn't remembered: the
+     * owner may only have changed their mind, and a typo kept for good is worse than one
+     * corrected again. Picking it as typed in the bar, or adding it, keeps it.
      */
     fun backspace(): Boolean {
         val spaced = autoSpaced()
@@ -180,8 +182,6 @@ class Composer(private val field: Field, private val clock: () -> Long) {
         if (field.before(done.length).toString() != done) return false
         field.batch { field.delete(done.length); field.commit(fix.typed + fix.separator) }
         if (fix.separator == " ") markSpace()
-        corrector?.learn(fix.typed)
-        onLearned(fix.typed)
         return true
     }
 
@@ -313,15 +313,24 @@ class Composer(private val field: Field, private val clock: () -> Long) {
 
     private fun correctWord(separator: String): Correction? {
         val c = corrector ?: return null
-        val before = field.before(MAX_WORD + 1)
+        val before = field.before(2 * MAX_WORD + 4).toString()
         var i = before.length
         while (i > 0 && (before[i - 1].isLetter() || before[i - 1] == '\'')) i--
         // A word glued to something else (a URL, an address, a number) is not ours to touch.
         if (i > 0 && !before[i - 1].isWhitespace() && before[i - 1] !in OPENERS) return null
         val word = before.substring(i).trimEnd('\'')
-        if (word.isEmpty() || word.length != before.length - i) return null
-        val fixed = c.correct(word) ?: return null
+        if (word.isEmpty() || word.length != before.length - i || word.length > MAX_WORD) return null
+        val fixed = c.correct(word, contextOf(before.substring(0, i))) ?: return null
         return Correction(word, fixed, separator)
+    }
+
+    /** What the word being typed follows (see [nextContext]), for weighing what it may be. */
+    fun wordContext(): String? {
+        val before = field.before(2 * MAX_WORD + 4).toString()
+        var i = before.length
+        while (i > 0 && (before[i - 1].isLetter() || before[i - 1] == '\'')) i--
+        if (i == 0 && before.length >= 2 * MAX_WORD + 4) return null
+        return contextOf(before.substring(0, i))
     }
 
     private fun endsWithWordAndSpace(): Boolean {

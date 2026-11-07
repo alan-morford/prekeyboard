@@ -18,7 +18,7 @@ android {
         // The newest Android: no "built for an older version of Android" warning on install.
         targetSdk = 35
         versionCode = commitCount
-        versionName = "1.0.9"
+        versionName = "1.1.0"
     }
     buildTypes {
         release {

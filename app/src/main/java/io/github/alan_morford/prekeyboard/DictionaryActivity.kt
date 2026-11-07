@@ -19,7 +19,7 @@ import android.widget.TextView
 
 /**
  * The owner's own words: the ones added by holding a word in the suggestion bar, or kept by
- * undoing a correction, which autocorrect leaves alone and swiping can spell. Each can be
+ * tapping it as typed there, which autocorrect leaves alone and swiping can spell. Each can be
  * taken out, and a word can be typed in to add it. The keyboard follows along straight away.
  */
 class DictionaryActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeListener {
@@ -35,8 +35,14 @@ class DictionaryActivity : Activity(), SharedPreferences.OnSharedPreferenceChang
             setPadding(unit * 2, unit * 2, unit * 2, unit * 2)
         }
         column.addView(TextView(this).apply {
-            text = "Words you added by holding them in the suggestion bar, or kept by undoing a " +
-                "correction. Autocorrect leaves them alone and swiping can spell them."
+            text = "Your dictionary"
+            textSize = 28f
+            setTextColor(AppLook.ORANGE)
+            gravity = Gravity.CENTER
+        })
+        column.addView(TextView(this).apply {
+            text = "Words you added by holding them in the suggestion bar, or kept by tapping " +
+                "them as typed in the bar. Autocorrect leaves them alone and swiping can spell them."
             setTextColor(GREY)
             gravity = Gravity.CENTER
             setPadding(0, unit / 2, 0, unit)
@@ -50,7 +56,8 @@ class DictionaryActivity : Activity(), SharedPreferences.OnSharedPreferenceChang
             setHintTextColor(Color.rgb(0x80, 0x80, 0x80))
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
-        val add = Button(this).apply { text = "Add" }
+        // Add in the Pre's orange, like Install in the update popup: the screen's one action.
+        val add = Button(this).apply { text = "Add"; AppLook.main(this) }
         fun addTyped() {
             val w = field.text.toString().trim()
             if (!isWord(w)) { field.error = "Letters only, and an apostrophe"; return }
@@ -79,7 +86,7 @@ class DictionaryActivity : Activity(), SharedPreferences.OnSharedPreferenceChang
         column.addView(list)
 
         val scroll = ScrollView(this).apply {
-            setBackgroundColor(Color.rgb(0x28, 0x2c, 0x2f))
+            setBackgroundColor(AppLook.PAGE)
             isFillViewport = true
             addView(column)
         }
@@ -128,6 +135,7 @@ class DictionaryActivity : Activity(), SharedPreferences.OnSharedPreferenceChang
                 })
                 addView(Button(this@DictionaryActivity).apply {
                     text = "Remove"
+                    AppLook.action(this)
                     contentDescription = "Remove $w"
                     setOnClickListener { Settings.removeLearned(this@DictionaryActivity, w) }
                 })

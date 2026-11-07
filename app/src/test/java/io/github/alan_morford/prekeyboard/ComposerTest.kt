@@ -22,6 +22,7 @@ class ComposerTest {
 
     @Before fun setUp() {
         composer.corrector = File("src/main/assets/dictionary.txt").bufferedReader().useLines { Corrector(it) }
+        File("src/main/assets/contractions.txt").bufferedReader().useLines { composer.corrector!!.loadContractions(it) }
         composer.onLearned = { learned += it }
     }
 
@@ -39,16 +40,25 @@ class ComposerTest {
         assertEquals("i dont think teh cat", text.toString())
     }
 
-    @Test fun backspaceUndoesAndLearns() {
+    @Test fun backspaceUndoesWithoutLearning() {
         type("teh ")
         assertEquals("the ", text.toString())
         assertEquals(true, composer.backspace())
         assertEquals("teh ", text.toString())
-        assertEquals(listOf("teh"), learned)
+        // Undone, not remembered: the owner may just have changed their mind.
+        assertEquals(emptyList<String>(), learned)
+        // So the same typo is corrected again, and can be undone again.
         type("teh ")
+        assertEquals("teh the ", text.toString())
+        assertEquals(true, composer.backspace())
         assertEquals("teh teh ", text.toString())
         // A second backspace is an ordinary one.
         assertEquals(false, composer.backspace())
+    }
+
+    @Test fun contractionsFromContext() {
+        type("I think ill take a nap. ill be back, its fine. The dog wagged its tail ")
+        assertEquals("I think I'll take a nap. I'll be back, it's fine. The dog wagged its tail ", text.toString())
     }
 
     @Test fun doubleSpacePeriod() {

@@ -5,7 +5,9 @@ package io.github.alan_morford.prekeyboard
  *
  * - Contractions typed without their apostrophe get it back: "dont" -> "don't", "im" -> "I'm".
  *   Only the ones whose bare form is not itself an everyday word: "well", "were", "its",
- *   "ill", "hell", "shell", "lets" and "wed" are left alone.
+ *   "ill", "hell", "shell", "lets" and "wed" are left alone, but the suggestion bar offers
+ *   their contraction beside them ("ill": "I'll"), and where the word before makes the
+ *   contraction all but certain ("I think ill", "that its"), they get the apostrophe too.
  * - A lone "i", and a proper noun typed in lower case, get their capital.
  * - An unknown word becomes the dictionary word closest to it, where "close" is an edit
  *   distance that knows the Pre's keyboard: hitting the key next door, swapping two letters
@@ -23,7 +25,7 @@ class Corrector(lines: Sequence<String>) {
     /** Keyed by lower case; the value keeps the word's own case ("I", "London", "don't"). */
     private val words = HashMap<String, Entry>(131072)
 
-    /** Words the owner has kept by undoing a correction: never corrected again. */
+    /** Words the owner has added or picked as typed over a correction: never corrected again. */
     // Read by the suggestion thread while the keyboard may add to it: synchronised.
     private val learned: MutableSet<String> = java.util.Collections.synchronizedSet(HashSet<String>())
 
@@ -47,6 +49,31 @@ class Corrector(lines: Sequence<String>) {
 
     val size get() = words.size
 
+    /** For each [AMBIGUOUS] word after a context ("ill" after "think"): how often it is the word, and how often the contraction. */
+    private val odds = HashMap<String, IntArray>()
+
+    /** contractions.txt (tools/build_contractions.py): word, context, times as the word, times as the contraction. */
+    fun loadContractions(lines: Sequence<String>) {
+        for (line in lines) {
+            if (line.isEmpty() || line[0] == '#') continue
+            val f = line.split('\t')
+            if (f.size < 4) continue
+            val a = f[2].toIntOrNull() ?: continue
+            val b = f[3].toIntOrNull() ?: continue
+            odds[f[0] + '\t' + f[1]] = intArrayOf(a, b)
+        }
+    }
+
+    /**
+     * After [context], [word] (an [AMBIGUOUS] one) is all but certainly its contraction:
+     * "ill" after "think" (3 times against 609), but not "well" at a sentence's start, which
+     * is "we'll" only 3 times in 4.
+     */
+    private fun contractionMeant(word: String, context: String?): Boolean {
+        val n = odds[word + '\t' + (context ?: return false)] ?: return false
+        return n[1] >= MIN_EVIDENCE && n[1] + 1 >= CERTAIN * (n[0] + 1)
+    }
+
     /** Whether one word commonly follows another (from NextWords), to tell run-together words apart. */
     @Volatile var follows: (String, String) -> Boolean = { _, _ -> false }
 
@@ -66,8 +93,11 @@ class Corrector(lines: Sequence<String>) {
         return words[lower]?.word ?: lower.takeIf { it in learned }
     }
 
-    /** The correction for [typed], or null to leave it as typed. */
-    fun correct(typed: String): String? {
+    /**
+     * The correction for [typed], or null to leave it as typed. [context] is what it follows,
+     * as NextWords has it (a word in lower case, [NextWords.START] or [NextWords.COMMA]).
+     */
+    fun correct(typed: String, context: String? = null): String? {
         if (typed.isEmpty() || typed.length > MAX_LENGTH) return null
         if (!typed.all { it.isLetter() || it == '\'' } || !typed[0].isLetter()) return null
         val lower = typed.lowercase()
@@ -76,6 +106,7 @@ class Corrector(lines: Sequence<String>) {
         if (typed.length > 1 && typed.all { it.isUpperCase() || it == '\'' }) return null
 
         CONTRACTIONS[lower]?.let { return casedLike(typed, it).takeIf { r -> r != typed } }
+        AMBIGUOUS[lower]?.let { if (contractionMeant(lower, context)) return casedLike(typed, it) }
 
         words[lower]?.let { e ->
             // Known. Only its capital can be wrong: "i", or "london" for "London".
@@ -94,16 +125,21 @@ class Corrector(lines: Sequence<String>) {
      * autocorrect would make of it (or the word itself, when it is a word), then the commonest
      * words it begins, then the nearest spellings.
      */
-    fun suggestions(typed: String, max: Int = 3): List<String> {
+    fun suggestions(typed: String, context: String? = null, max: Int = 3): List<String> {
         if (typed.isEmpty() || typed.length > MAX_LENGTH || !typed[0].isLetter()) return emptyList()
         val lower = typed.lowercase()
         val out = LinkedHashSet<String>()
-        val fix = correct(typed)
+        val fix = correct(typed, context)
         when {
             fix != null -> out += fix
             lower in learned -> out += typed
             else -> words[lower]?.let { out += casedLike(typed, it.word) }
         }
+        // A word that is also a contraction without its apostrophe ("ill", "its"): the
+        // contraction next, since nothing else here would find it; or, when the context made
+        // it the contraction, the word as typed next.
+        if (fix != null && lower in AMBIGUOUS) words[lower]?.let { out += casedLike(typed, it.word) }
+        out.firstOrNull()?.let { first -> AMBIGUOUS[first.lowercase()]?.let { out += casedLike(typed, it) } }
         for (w in completions(lower, 2)) out += casedLike(typed, w)
         if (lower.length >= 2 && '\'' !in lower && typed.all { it.isLetter() })
             for (w in nearest(lower, max)) out += casedLike(typed, w)
@@ -122,6 +158,7 @@ class Corrector(lines: Sequence<String>) {
         val out = LinkedHashSet<String>()
         fun add(w: String) { if (!w.equals(word, ignoreCase = true) && out.size < max) out += casedLike(word, w) }
         CONTRACTIONS[lower]?.let { add(it) }
+        AMBIGUOUS[lower]?.let { add(it) }
         val one = HashMap<String, Float>()
         edits(lower, 0f, one, full = true)
         one.remove(lower)
@@ -197,10 +234,12 @@ class Corrector(lines: Sequence<String>) {
             val eb = words[b] ?: return
             if (ea.score < halfScore(a) || eb.score < halfScore(b)) return
             val paired = follows(a, b)
-            // Two little words that don't go together ("to on", "a the") are likelier a slip
-            // in one word than two words; a longer pair ("I went", "the dog") can stand.
-            if (!paired && a.length + b.length < 6 && maxOf(a.length, b.length) < 4) return
-            val pair = if (paired) 0f else UNPAIRED
+            // Two little words that don't go together ("to on" for "toon") are likelier a slip
+            // in one word, so such a split costs more and loses to a common word nearby ("too"),
+            // but beats a rare one ("innit" for "onnit"), and stands when nothing is near
+            // ("nownin" -> "now in"). A longer pair ("I went", "the dog") has no extra cost.
+            val little = !paired && a.length + b.length < 6 && maxOf(a.length, b.length) < 4
+            val pair = (if (paired) 0f else UNPAIRED) + (if (little) LITTLE_PAIR else 0f)
             val value = minOf(ea.score, eb.score) - COST_WEIGHT * cost - pair
             if (best == null || value > best!!.second) best = "${ea.word} ${eb.word}" to value
         }
@@ -276,6 +315,10 @@ class Corrector(lines: Sequence<String>) {
 
     companion object {
         private const val MAX_LENGTH = 24
+        /** An [AMBIGUOUS] word becomes its contraction after a context that makes it this many times likelier... */
+        private const val CERTAIN = 10
+        /** ...seen this often at least. */
+        private const val MIN_EVIDENCE = 10
         /** A one-letter prefix begins thousands of words: look through this many at most. */
         private const val COMPLETION_SCAN = 15000
         /** How many log2-frequency points one unit of edit cost is worth. */
@@ -286,10 +329,12 @@ class Corrector(lines: Sequence<String>) {
         private const val ABOVE_SPACE = "cvbn"
         /** Running two words together costs about what a slip onto the next key does... */
         private const val MISSED_SPACE = 0.6f
-        /** ...and hitting a letter for the space more, since it adds a wrong letter... */
-        private const val SPACE_AS_LETTER = 1.2f
+        /** ...and hitting a letter for the space a little more, since it adds a wrong letter... */
+        private const val SPACE_AS_LETTER = 0.8f
         /** ...and more again when the second word isn't one that commonly follows the first. */
         private const val UNPAIRED = 1.5f
+        /** Taken off a split of two little words that don't go together. */
+        private const val LITTLE_PAIR = 3f
 
         /**
          * Key positions on the Pre, whose rows sit in matching columns: A is under Q, and Z
@@ -325,7 +370,15 @@ class Corrector(lines: Sequence<String>) {
             "hows" to "how's", "theres" to "there's", "heres" to "here's", "itll" to "it'll",
             "thatll" to "that'll", "wouldve" to "would've", "couldve" to "could've",
             "shouldve" to "should've", "mightve" to "might've", "mustve" to "must've",
+            "hed" to "he'd", "itd" to "it'd", "thatd" to "that'd", "whod" to "who'd",
+            "wholl" to "who'll", "whatll" to "what'll",
             "yall" to "y'all", "oclock" to "o'clock", "whatre" to "what're", "whove" to "who've",
+        )
+
+        /** Everyday words that are also a contraction typed without its apostrophe: never corrected, only offered. */
+        val AMBIGUOUS: Map<String, String> = mapOf(
+            "ill" to "I'll", "its" to "it's", "well" to "we'll", "were" to "we're", "lets" to "let's",
+            "wed" to "we'd", "hell" to "he'll", "shell" to "she'll", "shed" to "she'd",
         )
     }
 }

@@ -82,6 +82,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         val app = applicationContext
         Thread {
             val c = app.assets.open("dictionary.txt").bufferedReader(Charsets.UTF_8).useLines { Corrector(it) }
+            app.assets.open("contractions.txt").bufferedReader(Charsets.UTF_8).useLines { c.loadContractions(it) }
             val learned = Settings.learned(app)
             c.learnAll(learned)
             val d = SwipeDecoder(c.entries())
@@ -496,6 +497,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
             return
         }
         val typed = composer.currentWord()
+        val typedAfter = composer.wordContext()
         val c = composer.corrector
         if (c == null) { show(emptyList(), verbatim = false, emoji = false); return }
         if (typed.isEmpty()) { show(predict() ?: emptyList(), verbatim = false, emoji = false); return }
@@ -503,7 +505,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         // thread of its own, so typing never waits for it. The bar keeps what it shows till then.
         suggestHandler.post {
             if (gen != barGeneration) return@post
-            val list = c.suggestions(typed)
+            val list = c.suggestions(typed, typedAfter)
             val best = list.firstOrNull() ?: typed
             val others = list.filter { it != best && it != typed }
             val verbatim = best != typed

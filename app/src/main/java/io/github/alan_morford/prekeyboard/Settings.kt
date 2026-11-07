@@ -62,7 +62,7 @@ data class Settings(
 
         fun update(context: Context, change: (Settings) -> Settings) = write(context, change(read(context)))
 
-        // Words kept by undoing a correction, and recently used emoji: data, not choices.
+        // Words the owner added, and recently used emoji: data, not choices.
         const val LEARNED = "learned"
         private const val RECENT = "recentEmoji"
 
