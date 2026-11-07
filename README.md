@@ -33,7 +33,8 @@ TouchPad keyboard. It shares no code with either.
 - **Paste**: copy or cut something and a clipboard icon waits in the bar's right-hand place
   until you tap it to paste
 - **Fix a word**: tap a word in the text and the bar offers what else it might be (`ball` →
-  `bell`, `bill`, `bull`); tap one and it takes the word's place
+  `bell`, `bill`, `bull`); tap one and it takes the word's place. (A word autocorrect
+  changed switches back to what you typed instead; see Autocorrect.)
 - **Autocorrect** for typos, for contractions (`dont` → `don't`) and for words run together
   (`theynare` → `they are`), each change marked with an orange dashed underline and a light
   buzz. Tap the underlined word to switch between what you typed and the correction (and,
@@ -60,23 +61,28 @@ TouchPad keyboard. It shares no code with either.
   to lock it on; tap again to let go. **Shift** works the same way, and lights orange while
   the next letter will be a capital. Hold the orange key to turn **Hold for more** on or off.
 - **Sym** opens the digits and the symbols the letters page doesn't have: `[ ] { } < > ^ ~ | \`,
-  `` ` ° £ × ÷ ± ≠ ¡ ``, nothing repeated from the letters but the period. With Hold for more on,
-  hold a key for more still: curly quotes on `` ` ``, `« » ≤ ≥` on `<` and `>`, currencies on
-  `£`, `√ ∞` on `÷`, the long and short dashes `— –` on S, `¬` on `|`, superscripts and fractions on the digits. On that page, the **globe** asks
-  which keyboard to use (hold it to switch between the Orange and White styles) and the
-  **smiley** opens the emoji (with Hold for more on, hold it for the text emoticons, `:-)` and
-  friends). The bottom row keeps its shape between the two pages, so no key moves under your
-  thumb: ABC where shift is, the smiley where `@` is, the period where the period is, return where
-  Sym is. Hold that return (the one with the gear) to open the Pre Keyboard app.
+  `` ` ° £ × ÷ ± ≠ ¡ ``, nothing repeated from the letters but the period. With Hold for more
+  on, hold a key for more still: curly quotes on `` ` ``, `« » ≤ ≥` on `<` and `>`,
+  currencies on `£`, `√ ∞` on `÷`, superscripts and fractions on the digits, and on the
+  letters page the long and short dashes `— –` on S. On the Sym page, `¬` is held on `|`, the
+  **globe** asks which keyboard to use (hold it to switch between the Orange and White
+  styles) and the **smiley** opens the emoji (with Hold for more on, hold it for the text
+  emoticons, `:-)` and friends).
+- **The bottom row** sits on the same grid as the keys above: shift and Sym the same size at
+  either end, `@` one key wide under X with its `0` printed where the `7` is above it, then
+  the space bar, and the period under I, K and M. The Sym page's bottom row matches it key for
+  key, so nothing moves under your thumb when the page changes: ABC where shift is, the
+  smiley where `@` is, the period (with its microphone) where the period is, Return where Sym
+  is. Hold that Return (the one with the gear) to open the Pre Keyboard app.
 - **Period**: it brings a space with it. Backspace straight after takes just the space; a
   space typed out of habit isn't doubled; `?`, `,` or another period go against the word.
   No space in numbers (`3.14`), web or email addresses, or fields that aren't for words.
   It sits in the column of I, K and M, with a microphone in its corner.
-- **Speech input**: hold the period (a tap is always just a period). The
-  microphone lights up in a white disc and the bar says "Listening…"; the words go into the field as you
-  say them. Tap the bar (or hold the period again) to stop; a pause stops it too, and typing
-  any key does. The first time, Android asks to let Pre Keyboard use the microphone. It uses
-  the phone's own speech recogniser (Google's, on most phones).
+- **Speech input**: hold the period, on either page (a tap is always just a period). The
+  microphone lights up in a white disc and the bar says "Listening…"; the words go into the
+  field as you say them. Tap the bar (or hold the period again) to stop; a pause stops it
+  too, and typing any key does. The first time, Android asks to let Pre Keyboard use the
+  microphone. It uses the phone's own speech recogniser (Google's, on most phones).
 - **Punctuation after a space**: typed a space, then decided on a comma? `, . ? ! : ;` typed
   straight after the space go against the word and the space moves after them (`word ,` →
   `word, `).
@@ -214,6 +220,7 @@ python3 tools/build_emoji_words.py annotations/en.xml annotationsDerived/en.xml 
     app/src/main/assets/emoji.txt app/src/main/assets/dictionary.txt app/src/main/assets/emoji_words.txt
 python3 tools/build_next_words.py eng_sentences.tsv.bz2 app/src/main/assets/dictionary.txt \
     app/src/main/assets/next_words.txt
+python3 tools/build_contractions.py eng_sentences.tsv.bz2 app/src/main/assets/contractions.txt
 ```
 
 (SCOWL from http://wordlist.aspell.net/, `en_50k.txt` from
@@ -237,5 +244,5 @@ An APK built that way contains the font, so keep it to yourself.
 
 ## Licence
 
-Apache 2.0 - see [LICENSE](LICENSE). The word list is CC BY-SA 4.0, the next-word list CC BY
-2.0 FR and the emoji lists are under the Unicode License; see [NOTICE](NOTICE).
+Apache 2.0 - see [LICENSE](LICENSE). The word list is CC BY-SA 4.0, the next-word and contraction
+lists CC BY 2.0 FR and the emoji lists are under the Unicode License; see [NOTICE](NOTICE).
