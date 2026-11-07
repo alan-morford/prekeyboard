@@ -144,12 +144,21 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
      * comes and goes, and those insets don't always reach this view: the bar was seen on a
      * Pixel sitting over the keys till the keyboard was switched away and back. So the bar
      * itself is looked at too, at every measure and whenever the window lays out.
+     *
+     * Only the part of it that lies over this view counts: Samsung (gesture navigation) lays
+     * the same bar out below the keyboard's content rather than over it, and counting its
+     * whole height there left a bar's worth of empty space under the keys.
      */
     private fun imeNavBar(): Int {
         val decor = rootView as? ViewGroup ?: return 0
         for (i in 0 until decor.childCount) {
             val ch = decor.getChildAt(i)
-            if (ch.visibility == View.VISIBLE && ch.javaClass.name.endsWith("NavigationBarFrame")) return ch.height
+            if (ch.visibility != View.VISIBLE || !ch.javaClass.name.endsWith("NavigationBarFrame")) continue
+            // Not laid out yet: positions mean nothing, so keep what we had.
+            if (!isLaidOut || !ch.isLaidOut || height == 0) return navInset
+            val me = IntArray(2).also { getLocationInWindow(it) }
+            val bar = IntArray(2).also { ch.getLocationInWindow(it) }
+            return Math.max(0, Math.min(ch.height, me[1] + height - bar[1]))
         }
         return 0
     }
