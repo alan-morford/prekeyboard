@@ -65,58 +65,142 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
     private var deleting = false
     /** The last pair of words learned, so one finished word isn't counted twice. */
     private var lastPair: Pair<String, String>? = null
-    private val voice: Voice by lazy { Voice(this, voiceOut) }
+    private val voice: Voice by lazy { Voice(this, voiceOut) { language.tag } }
 
     override fun onCreate() {
         super.onCreate()
         Settings.prefs(this).registerOnSharedPreferenceChangeListener(this)
         clipboard.addPrimaryClipChangedListener(clipChanged)
-        composer.onLearned = { Settings.addLearned(this, it); decoder?.add(it, LEARNED_SCORE) }
+        composer.onLearned = { Settings.addLearned(this, language, it); decoder?.add(it, LEARNED_SCORE) }
         composer.onCorrected = { typed, fixed, tail ->
             Haptics.corrected(this)
             // Once the whole key's work is done: then the word is marked.
             main.post { markCorrection(typed, fixed, tail + newlineAfter); newlineAfter = 0 }
         }
-        // The dictionary is 88,000 words: read it off the main thread, and correct nothing until
-        // it is in.
+        useLanguage(Settings.read(this).language)
+    }
+
+    // --- The language's words -----------------------------------------------------------------
+
+    /** The language typed in now, whose words are in (or on their way). */
+    private var language = Language.EN_US
+    @Volatile private var wordsFor: Language? = null
+
+    /** A dictionary, ready to use: corrector and swipe decoder, and the owner's words they were given. */
+    private class Dictionary(val corrector: Corrector, val decoder: SwipeDecoder, var learned: Set<String>)
+    /** What the next word may be, and the emoji for words: per family ("en", "fr"). */
+    private class FamilyWords(val next: NextWords, val emoji: EmojiWords)
+
+    private var dictionary: Dictionary? = null
+    // Only the loading thread touches these two.
+    /**
+     * The dictionary in use and the ones a flick either way would bring, oldest first: those
+     * two are read ahead once the one in use is in, since on an old tablet a dictionary takes
+     * seconds to read.
+     */
+    private val dictionaries = LinkedHashMap<String, Dictionary>()
+    private val families = HashMap<String, FamilyWords>()
+    private val loading = HandlerThread("dictionary").apply { start() }
+    private val loadHandler = Handler(loading.looper)
+
+    /**
+     * Makes [lang] the language typed in. A dictionary is 60,000 to 90,000 words: read off
+     * the main thread, with nothing corrected or suggested until it is in.
+     */
+    private fun useLanguage(lang: Language) {
+        language = lang
+        if (wordsFor == lang) return
+        // What was learned in the language before is kept before its words are put away.
+        saveNextWords()
+        wordsFor = lang
+        composer.corrector = null; decoder = null; emojiWords = null; nextWords = null; dictionary = null
+        swipeGuesses = emptyList(); swipeLikely = null
+        refreshBar()
         val app = applicationContext
-        Thread {
-            val c = app.assets.open("dictionary.txt").bufferedReader(Charsets.UTF_8).useLines { Corrector(it) }
-            app.assets.open("contractions.txt").bufferedReader(Charsets.UTF_8).useLines { c.loadContractions(it) }
-            val learned = Settings.learned(app)
-            c.learnAll(learned)
-            val d = SwipeDecoder(c.entries())
-            for (w in learned) d.add(w, LEARNED_SCORE)
-            // Before Android 6 there is no asking whether an emoji draws: the panel's own list says.
-            val drawable = if (Build.VERSION.SDK_INT >= 23) null
-                else EmojiPanel.load(app).flatMap { it.emoji }.toHashSet()
-            val paint = Paint()
-            val ew = app.assets.open("emoji_words.txt").bufferedReader(Charsets.UTF_8).useLines { lines ->
-                EmojiWords(lines) { e -> drawable?.contains(e) ?: EmojiPanel.canDraw(paint, e) }
-            }
-            val nw = app.assets.open("next_words.txt").bufferedReader(Charsets.UTF_8).useLines { NextWords(it) }
-            runCatching { File(app.filesDir, NEXT_WORDS_FILE).takeIf { it.exists() }?.useLines { nw.load(it) } }
+        val around = Settings.read(this).languages.let { all ->
+            val i = all.indexOf(lang)
+            if (i < 0 || all.size < 2) emptyList()
+            else listOf(all[(i + 1) % all.size], all[(i - 1 + all.size) % all.size]).distinct()
+        }
+        loadHandler.post {
+            val fam = families.getOrPut(lang.family) { readFamily(app, lang) }
+            val dict = keep(lang) { readDictionary(app, lang) }
+            dict.corrector.follows = fam.next::follows
             main.post {
-                c.follows = nw::follows
-                composer.corrector = c; decoder = d; emojiWords = ew; nextWords = nw
-                learnedNow = learned
+                if (wordsFor != lang) return@post            // flicked on again meanwhile
+                composer.corrector = dict.corrector; decoder = dict.decoder; dictionary = dict
+                emojiWords = fam.emoji; nextWords = fam.next
                 syncLearned()
                 refreshBar()
             }
-        }.apply { name = "dictionary"; isDaemon = true }.start()
+            // The languages a flick would go to next, read ahead; the one in use stays newest.
+            for (l in around) if (l.id !in dictionaries && wordsFor == lang) {
+                keep(l) { readDictionary(app, l) }
+                families.getOrPut(l.family) { readFamily(app, l) }
+            }
+            keep(lang) { dict }
+        }
     }
 
-    /** The owner's words the corrector and the decoder were last given. */
-    private var learnedNow: Set<String> = emptySet()
+    /** [lang]'s dictionary, kept as the newest, read with [read] if it isn't kept already. On the loading thread. */
+    private fun keep(lang: Language, read: () -> Dictionary): Dictionary {
+        val dict = dictionaries.remove(lang.id) ?: read()
+        dictionaries[lang.id] = dict
+        while (dictionaries.size > KEEP_DICTIONARIES) dictionaries.remove(dictionaries.keys.first())
+        return dict
+    }
+
+    private fun readDictionary(app: android.content.Context, lang: Language): Dictionary {
+        fun lines(name: String) = app.assets.open(lang.asset(name)).bufferedReader(Charsets.UTF_8)
+        val readers = lang.dictionaries.map { app.assets.open(it).bufferedReader(Charsets.UTF_8) }
+        val c = try { Corrector(readers.asSequence().flatMap { it.lineSequence() }, lang) }
+            finally { readers.forEach { it.close() } }
+        if (lang.has(Language.CONTRACTIONS)) lines(Language.CONTRACTIONS).useLines { c.loadContractions(it) }
+        val learned = Settings.learned(app, lang)
+        c.learnAll(learned)
+        val d = SwipeDecoder(c.entries())
+        for (w in learned) d.add(w, LEARNED_SCORE)
+        return Dictionary(c, d, learned)
+    }
+
+    private fun readFamily(app: android.content.Context, lang: Language): FamilyWords {
+        fun lines(name: String) = app.assets.open(lang.asset(name)).bufferedReader(Charsets.UTF_8)
+        // Before Android 6 there is no asking whether an emoji draws: the panel's own list says.
+        val drawable = if (Build.VERSION.SDK_INT >= 23) null
+            else EmojiPanel.load(app).flatMap { it.emoji }.toHashSet()
+        val paint = Paint()
+        val ew = lines(Language.EMOJI_WORDS).useLines { l ->
+            EmojiWords(l) { e -> drawable?.contains(e) ?: EmojiPanel.canDraw(paint, e) }
+        }
+        val nw = lines(Language.NEXT_WORDS).useLines { NextWords(it) }
+        runCatching { nextWordsFile(app, lang).takeIf { it.exists() }?.useLines { nw.load(it) } }
+        return FamilyWords(nw, ew)
+    }
+
+    /** What the owner types after what, kept per family: English in the file it always had. */
+    private fun nextWordsFile(app: android.content.Context, lang: Language) =
+        File(app.filesDir, if (lang.english) NEXT_WORDS_FILE else "next_words_mine_${lang.family}.txt")
+
+    /** A flick on the space bar: on to the next language checked, or back to the one before. */
+    override fun onLanguageFlick(step: Int) {
+        val s = Settings.read(this)
+        if (s.languages.size < 2) return
+        val i = s.languages.indexOf(s.language)
+        val n = s.languages.size
+        val next = s.languages[((i + step) % n + n) % n]
+        settle()
+        composer.forget()
+        Settings.update(this) { it.copy(language = next) }
+        view?.flashLanguage(next.short)
+    }
 
     /** Words added or taken out in the dictionary screen (or added here): the keyboard follows. */
     private fun syncLearned() {
-        val c = composer.corrector ?: return
-        val d = decoder ?: return
-        val now = Settings.learned(this)
-        for (w in learnedNow - now) { c.unlearn(w); d.remove(w) }
-        for (w in now - learnedNow) { c.learn(w); d.add(w, LEARNED_SCORE) }
-        learnedNow = now
+        val dict = dictionary ?: return
+        val now = Settings.learned(this, language)
+        for (w in dict.learned - now) { dict.corrector.unlearn(w); dict.decoder.remove(w) }
+        for (w in now - dict.learned) { dict.corrector.learn(w); dict.decoder.add(w, LEARNED_SCORE) }
+        dict.learned = now
         refreshBar()
     }
 
@@ -127,14 +211,17 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         saveNextWords()
         live.quitSafely()
         suggestThread.quitSafely()
+        loading.quitSafely()
         super.onDestroy()
     }
 
     /** A setting changed - in the setup screen, or by long-pressing the orange key or globe: show it now. */
     override fun onSharedPreferenceChanged(prefs: SharedPreferences?, key: String?) {
         if (key == Settings.VOICE_PENDING) return
-        if (key == Settings.LEARNED) { syncLearned(); return }
-        view?.apply(Settings.read(this))
+        if (key != null && key.startsWith(Settings.LEARNED)) { syncLearned(); return }
+        val s = Settings.read(this)
+        if (s.language != language) useLanguage(s.language)
+        view?.apply(s)
         refreshBar()
     }
 
@@ -193,9 +280,10 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
     /** What the owner types after what, kept on a thread of its own. */
     private fun saveNextWords() {
         val nw = nextWords ?: return
+        val lang = wordsFor ?: return
         if (!nw.dirty) return
         val text = nw.save()
-        val file = File(filesDir, NEXT_WORDS_FILE)
+        val file = nextWordsFile(this, lang)
         Thread { runCatching { File(file.path + ".new").apply { writeText(text) }.renameTo(file) } }.start()
     }
 
@@ -733,7 +821,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
             }
         }
         composer.corrector?.learn(word)
-        Settings.addLearned(this, word)
+        Settings.addLearned(this, language, word)
         decoder?.add(word.lowercase(), LEARNED_SCORE)
         refreshBar()
     }
@@ -987,6 +1075,8 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         private const val OWN_EDIT_MS = 400L
         private const val CLIP_DONE = "passed"
         private const val NEXT_WORDS_FILE = "next_words_mine.txt"
+        /** Dictionaries kept in memory: the one in use, and the next and the one before. */
+        private const val KEEP_DICTIONARIES = 3
         /** How long a correction waits to be told where it is on screen, before it goes unmarked. */
         private const val ANCHOR_WAIT_MS = 400L
         /** Farther than this from the cursor, a mark isn't looked for in the text: it's dropped. */

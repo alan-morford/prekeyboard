@@ -15,10 +15,14 @@ package io.github.alan_morford.prekeyboard
  *   word is, so "teh" becomes "the" rather than "ten".
  * - Two words run together, the space missed or hit as a letter above it, come apart:
  *   "theyare" and "theynare" -> "they are", when that beats any one word.
+ * - In other languages ([Language]): a missing accent is the cheapest slip of all ("etre" ->
+ *   "être", "strasse" -> "straße"), the contraction rules are English only, and a word
+ *   elided against the next ("l'homme", "dell'anno") is the word after its apostrophe,
+ *   with the apostrophe put in where it was left out ("cest" -> "c'est").
  *
  * Plain Kotlin with no Android in it, so the tests run it directly.
  */
-class Corrector(lines: Sequence<String>) {
+class Corrector(lines: Sequence<String>, val lang: Language = Language.EN_US) {
 
     private class Entry(val word: String, val score: Int)
 
@@ -32,6 +36,12 @@ class Corrector(lines: Sequence<String>) {
     init {
         for (line in lines) {
             if (line.isEmpty() || line[0] == '#') continue
+            // A regional dictionary's word that the one before it had and it hasn't: "-color".
+            if (line[0] == '-') {
+                val key = line.substring(1).lowercase()
+                if (words[key]?.word == line.substring(1)) words.remove(key)
+                continue
+            }
             val tab = line.indexOf('\t')
             if (tab <= 0) continue
             val w = line.substring(0, tab)
@@ -41,6 +51,20 @@ class Corrector(lines: Sequence<String>) {
             // Prefer the lower-case spelling when a word comes both ways ("bill" and "Bill").
             if (had == null || (w == key && had.word != key) || (had.word != key && score > had.score))
                 words[key] = Entry(w, score)
+        }
+    }
+
+    /**
+     * For a language with accents: each word's spelling in plain letters ("deja"), and the
+     * commonest word that is spelt so with its accents ("déjà"), where that differs.
+     */
+    private val plain: HashMap<String, Entry> = HashMap<String, Entry>().apply {
+        if (lang.accents.isEmpty()) return@apply
+        for ((k, e) in words) {
+            val f = Language.fold(k)
+            if (f == k) continue
+            val had = this[f]
+            if (had == null || e.score > had.score) this[f] = e
         }
     }
 
@@ -85,10 +109,17 @@ class Corrector(lines: Sequence<String>) {
     /** The owner took [word] out of their dictionary: corrected again, unless the dictionary has it. */
     fun unlearn(word: String) { learned -= word.lowercase() }
 
-    fun isKnown(word: String): Boolean = word.lowercase().let { it in words || it in learned }
+    fun isKnown(word: String): Boolean {
+        lang.elided(word)?.let { return isKnown(it.second) || word.lowercase() in learned }
+        return word.lowercase().let { it in words || it in learned }
+    }
 
-    /** [word] spelt as the dictionary spells it ("i'm" -> "I'm"), or null for a word it doesn't know. */
+    /**
+     * [word] spelt as the dictionary spells it ("i'm" -> "I'm"), or null for a word it doesn't
+     * know. An elided word ("l'homme") is spelt as the word after its apostrophe ("homme").
+     */
     fun spelling(word: String): String? {
+        lang.elided(word)?.let { return spelling(it.second) }
         val lower = word.lowercase()
         return words[lower]?.word ?: lower.takeIf { it in learned }
     }
@@ -104,9 +135,13 @@ class Corrector(lines: Sequence<String>) {
         if (lower in learned) return null
         // A word typed all in capitals, beyond one letter, is meant that way (NASA, OK).
         if (typed.length > 1 && typed.all { it.isUpperCase() || it == '\'' }) return null
+        // "l'hommme": the word after the apostrophe is the one to correct.
+        lang.elided(typed)?.let { (pre, rest) -> return correct(rest, null)?.let { pre + it } }
 
-        CONTRACTIONS[lower]?.let { return casedLike(typed, it).takeIf { r -> r != typed } }
-        AMBIGUOUS[lower]?.let { if (contractionMeant(lower, context)) return casedLike(typed, it) }
+        if (lang.english) {
+            CONTRACTIONS[lower]?.let { return casedLike(typed, it).takeIf { r -> r != typed } }
+            AMBIGUOUS[lower]?.let { if (contractionMeant(lower, context)) return casedLike(typed, it) }
+        }
 
         words[lower]?.let { e ->
             // Known. Only its capital can be wrong: "i", or "london" for "London".
@@ -116,8 +151,34 @@ class Corrector(lines: Sequence<String>) {
 
         val one = nearestScored(lower, 1).firstOrNull()
         val two = split(lower)
-        val best = if (two != null && (one == null || two.second > one.second)) two.first else one?.first ?: return null
+        val elided = elision(lower)
+        val accented = accented(lower)
+        val best = listOfNotNull(one, two, elided, accented).maxByOrNull { it.second }?.first ?: return null
         return casedLike(typed, best).takeIf { it != typed }
+    }
+
+    /** [w] typed without the accents of a word ("deja" for "déjà"), however many it has. */
+    private fun accented(w: String): Pair<String, Float>? {
+        val e = plain[Language.fold(w)] ?: return null
+        if (e.word.equals(w, ignoreCase = true)) return null
+        return e.word to e.score - COST_WEIGHT * ACCENT
+    }
+
+    /**
+     * [w] as an elided word with its apostrophe left out ("cest" -> "c'est", "lhomme" ->
+     * "l'homme"), and how likely, on the same scale as [nearestScored]; null when it isn't one.
+     */
+    private fun elision(w: String): Pair<String, Float>? {
+        var best: Pair<String, Float>? = null
+        for (e in lang.elisions) {
+            if (w.length < e.length + 2 || !w.startsWith(e)) continue
+            val rest = words[w.substring(e.length)] ?: continue
+            // Only before a vowel or a silent h does a word elide.
+            if (Language.base(rest.word[0].lowercaseChar()) !in "aeiouyh") continue
+            val value = rest.score - COST_WEIGHT * MISSED_APOSTROPHE
+            if (best == null || value > best.second) best = "$e'${rest.word}" to value
+        }
+        return best
     }
 
     /**
@@ -127,6 +188,7 @@ class Corrector(lines: Sequence<String>) {
      */
     fun suggestions(typed: String, context: String? = null, max: Int = 3): List<String> {
         if (typed.isEmpty() || typed.length > MAX_LENGTH || !typed[0].isLetter()) return emptyList()
+        lang.elided(typed)?.let { (pre, rest) -> return suggestions(rest, null, max).map { pre + it } }
         val lower = typed.lowercase()
         val out = LinkedHashSet<String>()
         val fix = correct(typed, context)
@@ -138,8 +200,10 @@ class Corrector(lines: Sequence<String>) {
         // A word that is also a contraction without its apostrophe ("ill", "its"): the
         // contraction next, since nothing else here would find it; or, when the context made
         // it the contraction, the word as typed next.
-        if (fix != null && lower in AMBIGUOUS) words[lower]?.let { out += casedLike(typed, it.word) }
-        out.firstOrNull()?.let { first -> AMBIGUOUS[first.lowercase()]?.let { out += casedLike(typed, it) } }
+        if (lang.english) {
+            if (fix != null && lower in AMBIGUOUS) words[lower]?.let { out += casedLike(typed, it.word) }
+            out.firstOrNull()?.let { first -> AMBIGUOUS[first.lowercase()]?.let { out += casedLike(typed, it) } }
+        }
         for (w in completions(lower, 2)) out += casedLike(typed, w)
         if (lower.length >= 2 && '\'' !in lower && typed.all { it.isLetter() })
             for (w in nearest(lower, max)) out += casedLike(typed, w)
@@ -154,11 +218,14 @@ class Corrector(lines: Sequence<String>) {
      */
     fun alternatives(word: String, max: Int = 3): List<String> {
         if (word.isEmpty() || word.length > MAX_LENGTH || !word[0].isLetter()) return emptyList()
+        lang.elided(word)?.let { (pre, rest) -> return alternatives(rest, max).map { pre + it } }
         val lower = word.lowercase()
         val out = LinkedHashSet<String>()
         fun add(w: String) { if (!w.equals(word, ignoreCase = true) && out.size < max) out += casedLike(word, w) }
-        CONTRACTIONS[lower]?.let { add(it) }
-        AMBIGUOUS[lower]?.let { add(it) }
+        if (lang.english) {
+            CONTRACTIONS[lower]?.let { add(it) }
+            AMBIGUOUS[lower]?.let { add(it) }
+        }
         val one = HashMap<String, Float>()
         edits(lower, 0f, one, full = true)
         one.remove(lower)
@@ -277,6 +344,7 @@ class Corrector(lines: Sequence<String>) {
         }
         val n = w.length
         val sb = StringBuilder(n + 1)
+        if (lang.accents.isNotEmpty()) accentEdits(w) { s -> add(s, ACCENT) }
         for (i in 0 until n) {
             // An extra letter: cheaper when it doubles its neighbour.
             sb.setLength(0); sb.append(w, 0, i).append(w, i + 1, n)
@@ -310,8 +378,52 @@ class Corrector(lines: Sequence<String>) {
         }
     }
 
+    /**
+     * Every spelling of [w] with one letter's accent put in, taken out or changed ("etre":
+     * "être"), and the language's two-letter spellings joined ("strasse": "straße", "coeur":
+     * "cœur"), to [add].
+     */
+    private fun accentEdits(w: String, add: (String) -> Unit) {
+        val sb = StringBuilder(w.length)
+        for (i in w.indices) {
+            val b = Language.base(w[i])
+            val forms = lang.accentsOf(b) + (if (b != w[i]) b.toString() else "")
+            for (c in forms) {
+                if (c == w[i]) continue
+                sb.setLength(0); sb.append(w, 0, i).append(c).append(w, i + 1, w.length)
+                add(sb.toString())
+            }
+        }
+        for ((pair, one) in JOINED) {
+            if (one !in lang.accents) continue
+            var at = w.indexOf(pair)
+            while (at >= 0) {
+                add(w.substring(0, at) + one + w.substring(at + 2))
+                at = w.indexOf(pair, at + 1)
+            }
+        }
+    }
+
     private fun adjacentToNeighbour(w: String, i: Int) =
         (i > 0 && adjacent(w[i], w[i - 1])) || (i < w.length - 1 && adjacent(w[i], w[i + 1]))
+
+    /**
+     * Key positions on the Pre, whose rows sit in matching columns: A is under Q, and Z
+     * (after the orange key) under S, in the language's layout. Neighbours are the keys
+     * around a key, diagonals too.
+     */
+    private val position: Map<Char, Pair<Int, Int>> = HashMap<Char, Pair<Int, Int>>().apply {
+        val (top, middle, bottom) = lang.layout.rows
+        top.forEachIndexed { i, c -> put(c, i to 0) }
+        middle.forEachIndexed { i, c -> put(c, i to 1) }
+        bottom.forEachIndexed { i, c -> put(c, i + 1 to 2) }
+    }
+
+    fun adjacent(a: Char, b: Char): Boolean {
+        val p = position[a] ?: return false
+        val q = position[b] ?: return false
+        return Math.abs(p.first - q.first) <= 1 && Math.abs(p.second - q.second) <= 1
+    }
 
     companion object {
         private const val MAX_LENGTH = 24
@@ -336,21 +448,12 @@ class Corrector(lines: Sequence<String>) {
         /** Taken off a split of two little words that don't go together. */
         private const val LITTLE_PAIR = 3f
 
-        /**
-         * Key positions on the Pre, whose rows sit in matching columns: A is under Q, and Z
-         * (after the orange key) under S. Neighbours are the keys around a key, diagonals too.
-         */
-        private val position: Map<Char, Pair<Int, Int>> = HashMap<Char, Pair<Int, Int>>().apply {
-            "qwertyuiop".forEachIndexed { i, c -> put(c, i to 0) }
-            "asdfghjkl".forEachIndexed { i, c -> put(c, i to 1) }
-            "zxcvbnm".forEachIndexed { i, c -> put(c, i + 1 to 2) }
-        }
-
-        fun adjacent(a: Char, b: Char): Boolean {
-            val p = position[a] ?: return false
-            val q = position[b] ?: return false
-            return Math.abs(p.first - q.first) <= 1 && Math.abs(p.second - q.second) <= 1
-        }
+        /** Putting in, taking out or changing an accent: the cheapest slip of all. */
+        private const val ACCENT = 0.15f
+        /** Leaving out an elision's apostrophe ("cest"): next to nothing. */
+        private const val MISSED_APOSTROPHE = 0.3f
+        /** Two letters a language writes as one: "ss" as "ß", "oe" as "œ", "ae" as "æ". */
+        private val JOINED = listOf("ss" to 'ß', "oe" to 'œ', "ae" to 'æ')
 
         /** [word] with the capitals of [typed]: "Teh" -> "The". A word's own capitals stay. */
         fun casedLike(typed: String, word: String): String =

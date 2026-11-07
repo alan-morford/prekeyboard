@@ -61,59 +61,74 @@ object Keymap {
     private val shift = Key(Kind.SHIFT)
     private val sym = Key(Kind.SYM, label = "Sym")
 
-    val letters: List<List<Slot>> = listOf(
-        listOf(
-            c("q", "/", L),
-            c("w", "+", L),
-            c("e", "1", L, "e è é ê ë ę ē € ě"),
-            c("r", "2", L, "r ® ř ŕ"),
-            c("t", "3", L, "t ™ þ ť ţ"),
-            c("y", "(", ext = "y ý ÿ ¥"),
-            c("u", ")", ext = "u ù ú û ü ű"),
-            c("i", "%", ext = "i ì í î ï İ ı"),
-            c("o", "\"", ext = "o ò ó ô õ ö ø ő œ º ω"),
-            c("p", "=", ext = "p ¶ § π"),
-        ),
-        listOf(
-            c("a", "&", L, "a à á â ã ä å æ ª"),
-            c("s", "-", L, "s š ş ß σ $ ś — –"),
-            c("d", "4", L, "d ð † ‡ ď đ"),
-            c("f", "5", L),
-            c("g", "6", L, "g ğ"),
-            c("h", "$"),
-            c("j", "!"),
-            c("k", ":"),
-            c("l", "'", ext = "l ł ĺ"),
-            f(Kind.BACKSPACE),
-        ),
-        listOf(
-            f(Kind.ORANGE),
-            c("z", "*", L, "z ž ź ż"),
-            c("x", "7", L),
-            c("c", "8", L, "c ç ć © ¢ č"),
-            c("v", "9", L),
-            c("b", "#"),
-            c("n", "?", ext = "n ñ ń ň"),
-            c("m", ";", ext = "m µ"),
-            // The comma holds what the period used to, now that holding the period is speech.
-            c(",", "_", ext = ", … • ¿"),
-            f(Kind.RETURN),
-        ),
-        // The Pre's bottom row, inset at each end. On the column grid above: shift and Sym
-        // take two columns each (the same size, inset alike), @ is one key in the column of
-        // E, D and X with its 0 where theirs are, the space bar 3 to 7, and the period the
-        // column of M below I and K, with the microphone printed in its corner. The Sym
-        // page's bottom row is the same, key for key, so nothing moves when the page changes.
-        listOf(
-            Slot(EDGE, shift, drawn = false),
-            Slot(WIDE, shift),
-            c("@", "0", L),
-            Slot(4f, Key(Kind.SPACE, " ")),
-            Slot(1f, Key(Kind.CHAR, ".", corner = Corner.MIC)),
-            Slot(WIDE, sym),
-            Slot(EDGE, sym, drawn = false),
-        ),
+    /**
+     * What holding each letter offers after the letter itself (LuneOS's lists). In a language
+     * with accents of its own, those come first ([Language.accents]).
+     */
+    private val HOLDS = mapOf(
+        'e' to "è é ê ë ę ē € ě", 'r' to "® ř ŕ", 't' to "™ þ ť ţ", 'y' to "ý ÿ ¥",
+        'u' to "ù ú û ü ű", 'i' to "ì í î ï İ ı", 'o' to "ò ó ô õ ö ø ő œ º ω", 'p' to "¶ § π",
+        'a' to "à á â ã ä å æ ª", 's' to "š ş ß σ $ ś — –", 'd' to "ð † ‡ ď đ", 'g' to "ğ",
+        'l' to "ł ĺ", 'z' to "ž ź ż", 'c' to "ç ć © ¢ č", 'n' to "ñ ń ň", 'm' to "µ",
     )
+
+    /**
+     * The printed alternates by place, not by letter: they are the Pre's number and symbol
+     * grid, and stay where they are when a language moves the letters (Y and Z in German).
+     * The left half of the top three rows prints them top left.
+     */
+    private val ALTS = listOf(
+        listOf("/", "+", "1", "2", "3", "(", ")", "%", "\"", "="),
+        listOf("&", "-", "4", "5", "6", "$", "!", ":", "'"),
+        listOf("*", "7", "8", "9", "#", "?", ";"),
+    )
+
+    /** [letter]'s key in row [row], place [col] (on the bottom letter row, counted after the orange key). */
+    private fun letter(letter: Char, row: Int, col: Int, lang: Language): Slot {
+        val alt = ALTS[row][col]
+        val leftHalf = if (row == 2) col < 4 else col < 5
+        val own = lang.accentsOf(letter).toList().map { it.toString() }
+        val rest = HOLDS[letter]?.split(' ').orEmpty().filter { it !in own }
+        val ext = (own + rest).takeIf { it.isNotEmpty() }?.let { listOf(letter.toString()) + it }
+        return Slot(1f, Key(Kind.CHAR, letter.toString(), alt, if (leftHalf) L else AltPos.RIGHT, ext))
+    }
+
+    private val built = HashMap<String, List<List<Slot>>>()
+
+    /** The letters page for [lang]: its layout, and its accents first in the holds. */
+    fun letters(lang: Language): List<List<Slot>> = synchronized(built) {
+        built.getOrPut(lang.id) { lettersOf(lang) }
+    }
+
+    /** US English's letters page. */
+    val letters: List<List<Slot>> get() = letters(Language.EN_US)
+
+    private fun lettersOf(lang: Language): List<List<Slot>> {
+        val (top, middle, bottom) = lang.layout.rows
+        return listOf(
+            top.mapIndexed { i, ch -> letter(ch, 0, i, lang) },
+            middle.mapIndexed { i, ch -> letter(ch, 1, i, lang) } + f(Kind.BACKSPACE),
+            listOf(f(Kind.ORANGE)) + bottom.mapIndexed { i, ch -> letter(ch, 2, i, lang) } + listOf(
+                // The comma holds what the period used to, now that holding the period is speech.
+                c(",", "_", ext = ", … • ¿"),
+                f(Kind.RETURN),
+            ),
+            // The Pre's bottom row, inset at each end. On the column grid above: shift and Sym
+            // take two columns each (the same size, inset alike), @ is one key in the column of
+            // E, D and X with its 0 where theirs are, the space bar 3 to 7, and the period the
+            // column of M below I and K, with the microphone printed in its corner. The Sym
+            // page's bottom row is the same, key for key, so nothing moves when the page changes.
+            listOf(
+                Slot(EDGE, shift, drawn = false),
+                Slot(WIDE, shift),
+                c("@", "0", L),
+                Slot(4f, Key(Kind.SPACE, " ")),
+                Slot(1f, Key(Kind.CHAR, ".", corner = Corner.MIC)),
+                Slot(WIDE, sym),
+                Slot(EDGE, sym, drawn = false),
+            ),
+        )
+    }
 
     /** A digit in the accent colour; held, its superscript and fractions. */
     private fun digit(d: Char, ext: String) =

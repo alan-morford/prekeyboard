@@ -309,7 +309,9 @@ class Composer(private val field: Field, private val clock: () -> Long) {
         while (i > 0 && (t[i - 1].isLetter() || t[i - 1] == '\'')) i--
         if (i > 0 && !t[i - 1].isWhitespace() && t[i - 1] !in OPENERS) return null
         if (i == 0 && t.length > MAX_WORD) return null
-        return t.substring(i).trim('\'').lowercase().ifEmpty { null }
+        val word = t.substring(i).trim('\'')
+        // "l'homme" follows as "homme" does: the elision is no word of its own.
+        return (corrector?.lang?.bare(word) ?: word).lowercase().ifEmpty { null }
     }
 
     private fun correctWord(separator: String): Correction? {

@@ -21,6 +21,9 @@ TouchPad keyboard. It shares no code with either.
 - The Pre's layout key for key: four rows in matching columns, the orange key, Sym, and every
   key's alternate printed where the Pre printed it
 - Two styles, **Orange** and **White**: hold the globe on the Sym page to switch on the fly
+- **Languages**: English (US, UK, Canada, Australia), French, German, Spanish and Italian,
+  each with its own keys, words and suggestions; check the ones you use and flick the space
+  bar left or right to change
 - **Swipe to type**, forgiving of quick, rough swipes, with the word you would get shown as
   you swipe, and the next likeliest guesses one tap away
 - **Suggestion bar**: three words above the keys, the likeliest in the middle in orange, and
@@ -91,6 +94,8 @@ TouchPad keyboard. It shares no code with either.
 - **Hold for more** (off at first; switch it on in the app, or hold the orange key): hold a
   key for its accents or extra symbols, slide to the one you want and let go. Keys that have
   them carry a small dot in the style's colour.
+- **Flick the space bar** left or right, with more than one language checked: the next
+  language, or the one before. Its name shows on the space bar for a moment.
 - **Hold the space bar** and slide: the cursor follows your finger, left and right a character
   at a time, up and down a line at a time. With shift on, it selects as it goes.
 - **Hold backspace** and it repeats, then starts taking whole words. The suggestion bar waits
@@ -112,11 +117,40 @@ TouchPad keyboard. It shares no code with either.
   and finish a little off still find the word, and when two words fit the path about equally
   (`of`, `if`), the one that usually follows the word before wins.
 
+## Languages
+
+**Choose languages** in the app opens a list to check: English (US), English (UK), English
+(Canada), English (Australia), Français, Deutsch, Español and Italiano. US English is checked
+at first. With more than one checked, a quick flick left or right on the space bar goes to the
+next one or back, in the list's order, and the language's name shows on the space bar as it
+changes. Holding the space bar still moves the cursor.
+
+- **Keys**: French gets AZERTY and German QWERTZ, the layouts their typists know; the
+  printed alternates stay where they are, so orange + the third key of the top row is still
+  `1`. On the French keys M stays on the bottom row, beside N. Spanish, Italian and the
+  Englishes are QWERTY. With Hold for more on, a language's own accents come first on each
+  key (`é è ê ë` on E in French, `ß` first on S in German, `ñ` on N in Spanish).
+- **Words**: each language has its own dictionary, next-word suggestions and emoji
+  suggestions (`chat` → 🐈, `Bier` → 🍺). The Englishes differ only in spelling (`colour`,
+  `organise`) and share everything else.
+- **Accents**: autocorrect puts them in, however many a word has: `etre` → `être`, `deja` →
+  `déjà`, `strasse` → `Straße`, `coeur` → `cœur`, `manana` → `mañana`, `perche` → `perché`.
+  A word that is a word either way (`ou` and `où`, `si` and `sí`) is left as typed, with the
+  other offered in the bar.
+- **German nouns** get their capital (`haus` → `Haus`).
+- **French and Italian elisions**: the apostrophe goes in (`cest` → `c'est`, `jai` → `j'ai`,
+  `lanno` → `l'anno`), and in `l'hommme` the word after the apostrophe is the one corrected.
+- **Contractions** (`dont` → `don't`) are English only.
+- **Your own words** are kept per language (the Englishes share theirs); Edit dictionary shows
+  one language at a time.
+- **Speech input** listens for the language being typed in.
+
 ## Settings
 
 Open **Pre Keyboard** from the app drawer. Everything there takes effect at once, even with
 the keyboard on screen.
 
+- **Languages**: which languages to type in (see above).
 - **Style**: Orange or White. Holding the globe on the Sym page switches it too.
 - **Height**: Small, Medium or Large rows.
 - **Autocorrect** (on by default): fixes typos when you finish a word, and puts the apostrophe
@@ -160,7 +194,8 @@ the keyboard on screen.
 - **Vibrate on keys** (off by default): a light tap of the vibrator as each key goes down.
 - **Edit dictionary**: the words you added (by holding them in the bar, or by tapping them
   as typed there), each with **Remove**, and a field to add one. Autocorrect leaves these words
-  alone and swiping can spell them; a word you remove is corrected again.
+  alone and swiping can spell them; a word you remove is corrected again. With languages
+  of more than one kind checked, buttons along the top pick whose words to show.
 - **Updates**: shows the version, with **Check now**. The keyboard itself looks for a new
   release on GitHub once a day, when it comes up, and says so in the bar above the keys; tap
   that for the release notes, then **Install** or **Later** (asked again a day later). The
@@ -221,13 +256,28 @@ python3 tools/build_emoji_words.py annotations/en.xml annotationsDerived/en.xml 
 python3 tools/build_next_words.py eng_sentences.tsv.bz2 app/src/main/assets/dictionary.txt \
     app/src/main/assets/next_words.txt
 python3 tools/build_contractions.py eng_sentences.tsv.bz2 app/src/main/assets/contractions.txt
+
+# Regional English: only what differs from the US dictionary (british, canadian, australian).
+python3 tools/build_dictionary.py <scowl>/final en_50k.txt app/src/main/assets/en_GB/dictionary.txt \
+    british app/src/main/assets/dictionary.txt
+
+# French, German, Spanish, Italian (fr fra, de deu, es spa, it ita), each in its own folder.
+python3 tools/build_dictionary_lang.py fr fr_full.txt fra_sentences.tsv.bz2 \
+    app/src/main/assets/dictionary.txt app/src/main/assets/fr/dictionary.txt
+python3 tools/build_next_words.py fra_sentences.tsv.bz2 app/src/main/assets/fr/dictionary.txt \
+    app/src/main/assets/fr/next_words.txt fr app/src/main/assets/dictionary.txt
+python3 tools/build_emoji_words.py annotations/fr.xml annotationsDerived/fr.xml app/src/main/assets/emoji.txt \
+    app/src/main/assets/fr/dictionary.txt app/src/main/assets/fr/emoji_words.txt fr
 ```
 
-(SCOWL from http://wordlist.aspell.net/, `en_50k.txt` from
+(SCOWL from http://wordlist.aspell.net/, `en_50k.txt` and the other languages' `*_full.txt` from
 [FrequencyWords](https://github.com/hermitdave/FrequencyWords), and `emoji-test.txt` from
 https://unicode.org/Public/emoji/; the two `en.xml` from
 [CLDR](https://github.com/unicode-org/cldr), `common/annotations` and `common/annotationsDerived`;
-`eng_sentences.tsv.bz2` from https://downloads.tatoeba.org/exports/per_language/eng/.)
+`eng_sentences.tsv.bz2` and the others from https://downloads.tatoeba.org/exports/per_language/.)
+The other languages' word lists keep a word that the subtitles use often, or that Tatoeba's
+sentences use too, and take its case from Tatoeba (German nouns); see
+`tools/build_dictionary_lang.py`.
 
 ## The typeface
 
@@ -244,5 +294,5 @@ An APK built that way contains the font, so keep it to yourself.
 
 ## Licence
 
-Apache 2.0 - see [LICENSE](LICENSE). The word list is CC BY-SA 4.0, the next-word and contraction
+Apache 2.0 - see [LICENSE](LICENSE). The word lists are CC BY-SA 4.0, the next-word and contraction
 lists CC BY 2.0 FR and the emoji lists are under the Unicode License; see [NOTICE](NOTICE).

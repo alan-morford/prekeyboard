@@ -67,6 +67,8 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         fun onAddWord(word: String) {}
         /** The paste icon in the bar was tapped. */
         fun onPaste() {}
+        /** A flick on the space bar: the next language ([step] 1, flicked right) or the one before (-1). */
+        fun onLanguageFlick(step: Int) {}
     }
 
     var settings = Settings.read(context)
@@ -79,8 +81,10 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
     /** New settings, applied in place: a new style repaints, a new height (or bar) re-lays the keyboard. */
     fun apply(s: Settings) {
         val resize = s.height != settings.height || s.showsBar != settings.showsBar
+        val relayout = s.language != settings.language
         settings = s
         if (resize) { painter.clear(); requestLayout() }
+        else if (relayout) layoutKeys()
         invalidate()
     }
 
@@ -197,7 +201,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
 
     private enum class Page { LETTERS, SYMBOLS, EMOJI }
     private var page = Page.LETTERS
-    private val rows get() = if (page == Page.SYMBOLS) Keymap.symbols else Keymap.letters
+    private val rows get() = if (page == Page.SYMBOLS) Keymap.symbols else Keymap.letters(settings.language)
 
     private val emoji = EmojiPanel(context, this, object : EmojiPanel.Actions {
         override fun emoji(e: String) { host.onText(e) }
@@ -290,6 +294,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         when (key.kind) {
             Kind.CHAR -> drawCap(c, key, box)
             Kind.SPACE -> if (cursorMode) painter.icon(c, Painter.Icon.CURSOR, box.centerX(), box.centerY(), iconSize)
+                else drawLanguageFlash(c, box)
             Kind.SHIFT -> painter.icon(c, when (shift) {
                 Shift.OFF -> Painter.Icon.SHIFT
                 Shift.ONCE -> Painter.Icon.SHIFT_ON
@@ -341,6 +346,31 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
     }
 
     private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    // --- The language's name, flashed on the space bar as it changes -------------------------
+
+    private var flashName: String? = null
+    private var flashAt = 0L
+
+    /** Shows [name] on the space bar for a moment, then fades it: the Pre's space bar is otherwise bare. */
+    fun flashLanguage(name: String) {
+        flashName = name
+        flashAt = SystemClock.uptimeMillis()
+        invalidate()
+    }
+
+    private fun drawLanguageFlash(c: Canvas, box: RectF) {
+        val name = flashName ?: return
+        val age = SystemClock.uptimeMillis() - flashAt
+        if (age >= FLASH_SHOW + FLASH_FADE) { flashName = null; return }
+        val fade = if (age <= FLASH_SHOW) 1f else 1f - (age - FLASH_SHOW).toFloat() / FLASH_FADE
+        text.textSize = fitted(name, rowHeight * 0.3f, box.width() - 12 * dp)
+        text.color = Color.WHITE
+        text.alpha = (230 * fade).toInt()
+        centred(c, name, box)
+        text.alpha = 255
+        postInvalidateOnAnimation()
+    }
 
     private fun functionLabel(c: Canvas, s: String, box: RectF) {
         text.textSize = fitted(s, rowHeight * 0.34f, box.width() - 8 * dp)
@@ -1022,6 +1052,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
             return
         }
         if (held) return
+        if (pressed?.key?.kind == Kind.SPACE && flickedLanguage(x, y)) return
         val z = zoneAt(x, y)
         if (z?.key === pressed?.key) return
         // Off backspace, or onto it from another key: backspace only works where the finger
@@ -1035,6 +1066,23 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         }
         // Sliding off a key onto another moves the press, as webOS allowed.
         press(z)
+    }
+
+    /**
+     * A quick flick sideways from the space bar, before the hold that moves the cursor: the
+     * next language or the one before, when more than one is checked. The press is spent, so
+     * lifting types no space.
+     */
+    private fun flickedLanguage(x: Float, y: Float): Boolean {
+        if (settings.languages.size < 2) return false
+        val dx = x - downX
+        if (Math.abs(dx) < width / 10f * FLICK_KEYS || Math.abs(dx) < 2 * Math.abs(y - downY)) return false
+        handler.removeCallbacks(hold)
+        spent = true
+        pressed = null; preview = null
+        host.onLanguageFlick(if (dx > 0) 1 else -1)
+        invalidate()
+        return true
     }
 
     /** The finger being followed lifted ([up]), or the touch was called off: finish its press. */
@@ -1161,6 +1209,11 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         /** Holding a word in the bar, to add it to the dictionary. */
         private const val HOLD_FOR_ADD = 500L
         private const val CURSOR_STEP_X = 12f
+        /** How far across, in keys, a flick on the space bar goes to change language. */
+        private const val FLICK_KEYS = 1.2f
+        /** The language's name on the space bar: shown this long, then fading for this long. */
+        private const val FLASH_SHOW = 900L
+        private const val FLASH_FADE = 400L
 
         private const val NO_FINGER = -1
 

@@ -22,7 +22,7 @@ import android.widget.TextView
 
 /**
  * The app's one screen, and the gear beside the keyboard in Android's keyboard settings:
- * switching the keyboard on and choosing it, its style, size and typing help, and a field to
+ * switching the keyboard on and choosing it, its languages, style, size and typing help, and a field to
  * try it in. Every change shows on the keyboard straight away, even while it is up.
  */
 class SetupActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeListener {
@@ -49,6 +49,21 @@ class SetupActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
         column.addView(wideButton("2. Choose it") {
             (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).showInputMethodPicker()
         })
+
+        column.addView(heading("Languages"))
+        column.addView(TextView(this).apply {
+            setTextColor(Color.rgb(0xb4, 0xb4, 0xb4))
+            gravity = Gravity.CENTER
+            setPadding(0, unit / 2, 0, unit / 2)
+            val refresh = {
+                val s = Settings.read(this@SetupActivity)
+                text = if (s.languages.size == 1) "Typing in ${s.language.name}."
+                    else s.languages.joinToString(", ") { it.name } + ". Flick the space bar left or right to change."
+            }
+            refreshers += refresh
+            refresh()
+        })
+        column.addView(wideButton("Choose languages") { startActivity(Intent(this, LanguagesActivity::class.java)) })
 
         column.addView(heading("Style"))
         column.addView(choices(Style.values().toList(), { if (it == Style.ORANGE) "Orange" else "White" },

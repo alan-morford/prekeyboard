@@ -39,7 +39,8 @@ class SwipeDecoder(entries: Sequence<Pair<String, Int>>) {
 
     @Synchronized private fun add(word: String, score: Int, learned: Boolean) {
         if (score < MIN_SCORE) return
-        val bare = word.lowercase().filter { it != '\'' }
+        // An accent is no key of its own: "être" is swiped e-t-r-e, "straße" s-t-r-a-s-e.
+        val bare = Language.fold(word.lowercase()).filter { it != '\'' }
         if (bare.length < 2 || bare.any { it !in 'a'..'z' }) return
         // A double letter is one key: "hello" is h-e-l-o to the finger.
         val letters = StringBuilder().apply { for (c in bare) if (isEmpty() || last() != c) append(c) }

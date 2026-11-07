@@ -15,7 +15,9 @@ import android.speech.SpeechRecognizer
  * and each sentence is committed as it is finished. Listening starts again after each one,
  * so a long message can be spoken in one go; a stretch of silence ends it.
  */
-class Voice(private val context: Context, private val out: Out) : RecognitionListener {
+class Voice(private val context: Context, private val out: Out,
+            /** The language to listen for, as a BCP 47 tag ("fr-FR"): the one being typed in. */
+            private val language: () -> String) : RecognitionListener {
 
     interface Out {
         /** The words heard so far of what is being said, to show in place. */
@@ -55,6 +57,7 @@ class Voice(private val context: Context, private val out: Out) : RecognitionLis
             .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             .putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
             .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, language())
         r.startListening(i)
     }
 

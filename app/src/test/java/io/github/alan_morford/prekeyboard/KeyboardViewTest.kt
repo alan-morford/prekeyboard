@@ -55,12 +55,14 @@ class KeyboardViewTest {
         override fun canAdd(word: String) = word == "zorp"
         override fun onAddWord(word: String) { added += word }
         override fun onPaste() { pastes++ }
+        override fun onLanguageFlick(step: Int) { flicks += step }
     }
     private lateinit var context: Context
 
     private var voices = 0
     private var opened = 0
     private var pastes = 0
+    private val flicks = ArrayList<Int>()
     private val heldEvents = ArrayList<Boolean>()
     private val added = ArrayList<String>()
     private var listening: KeyboardView? = null
@@ -275,6 +277,38 @@ class KeyboardViewTest {
         }
         assertEquals("RRRLL", moves.toString())
         assertEquals("", typed.toString())         // a held space types nothing
+    }
+
+    @Test fun flickingTheSpaceBarChangesLanguageWhenThereIsMoreThanOne() {
+        val v = keyboard()
+        fun flick(dx: Float) {
+            val (x, y) = at(v, 3, 5f); val t = SystemClock.uptimeMillis()
+            touch(v, MotionEvent.ACTION_DOWN, x, y, t)
+            touch(v, MotionEvent.ACTION_MOVE, x + dx / 2, y, t + 40)
+            touch(v, MotionEvent.ACTION_MOVE, x + dx, y + 4, t + 80)
+            touch(v, MotionEvent.ACTION_UP, x + dx, y + 4, t + 100)
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(60))
+        }
+        // One language: a slide along the space bar is still just a space.
+        flick(v.width * 0.2f)
+        assertEquals(emptyList<Int>(), flicks)
+        assertEquals(" ", typed.toString())
+
+        val fr = Language.byId("fr")!!
+        Settings.update(context) { it.copy(languages = listOf(Language.EN_US, fr)) }
+        typed.setLength(0)
+        flick(v.width * 0.2f)
+        flick(-v.width * 0.2f)
+        assertEquals(listOf(1, -1), flicks)
+        assertEquals("", typed.toString())         // a flick types no space
+
+        // The keys follow the language: AZERTY's A where Q was.
+        Settings.update(context) { it.copy(language = fr) }
+        v.flashLanguage(fr.short)
+        shot(v, "french-letters")
+        tap(v, 0, 0.5f)
+        assertEquals("a", typed.toString())
+        Settings.update(context) { it.copy(languages = listOf(Language.EN_US), language = Language.EN_US) }
     }
 
     @Test fun suggestionBarAndSwipe() {

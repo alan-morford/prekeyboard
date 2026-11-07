@@ -43,6 +43,9 @@
         <activity android:name=".DictionaryActivity" android:exported="false"
             android:label="Your dictionary"
             android:windowSoftInputMode="adjustResize|stateHidden" />
+        <!-- The languages to type in, from the setup screen's Choose languages. -->
+        <activity android:name=".LanguagesActivity" android:exported="false"
+            android:label="Languages" />
         <!-- The update popup: a dialog of its own, apart from the setup screen's task. -->
         <activity android:name=".UpdateActivity" android:exported="false"
             android:label="@string/app_name"

@@ -21,12 +21,18 @@ import android.widget.TextView
  * The owner's own words: the ones added by holding a word in the suggestion bar, or kept by
  * tapping it as typed there, which autocorrect leaves alone and swiping can spell. Each can be
  * taken out, and a word can be typed in to add it. The keyboard follows along straight away.
+ *
+ * Each language keeps its own (the Englishes share one); with more than one checked, a row
+ * of buttons picks whose words are shown, starting with the one being typed in.
  */
 class DictionaryActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeListener {
 
     private val unit get() = (16 * resources.displayMetrics.density).toInt()
     private lateinit var list: LinearLayout
     private lateinit var empty: TextView
+    /** Whose words are shown. */
+    private var lang = Language.EN_US
+    private val pickers = ArrayList<Pair<Language, Button>>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,6 +54,29 @@ class DictionaryActivity : Activity(), SharedPreferences.OnSharedPreferenceChang
             setPadding(0, unit / 2, 0, unit)
         })
 
+        // One button per language family checked, when there is more than one.
+        val settings = Settings.read(this)
+        lang = settings.language
+        val families = settings.languages.distinctBy { it.family }
+        if (families.size > 1) {
+            if (families.none { it.family == lang.family }) lang = families[0]
+            column.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                setPadding(0, 0, 0, unit / 2)
+                for (l in families) {
+                    val b = Button(this@DictionaryActivity).apply {
+                        text = if (l.english) "English" else l.short
+                        isAllCaps = false
+                        setOnClickListener { lang = l; paintPickers(); fill() }
+                    }
+                    pickers += l to b
+                    addView(b)
+                }
+            })
+            paintPickers()
+        }
+
         val field = EditText(this).apply {
             hint = "Add a word"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
@@ -61,7 +90,7 @@ class DictionaryActivity : Activity(), SharedPreferences.OnSharedPreferenceChang
         fun addTyped() {
             val w = field.text.toString().trim()
             if (!isWord(w)) { field.error = "Letters only, and an apostrophe"; return }
-            Settings.addLearned(this, w)
+            Settings.addLearned(this, lang, w)
             field.setText("")
         }
         add.setOnClickListener { addTyped() }
@@ -114,12 +143,16 @@ class DictionaryActivity : Activity(), SharedPreferences.OnSharedPreferenceChang
     }
 
     override fun onSharedPreferenceChanged(prefs: SharedPreferences?, key: String?) {
-        if (key == Settings.LEARNED) fill()
+        if (key == Settings.learnedKey(lang)) fill()
+    }
+
+    private fun paintPickers() {
+        for ((l, b) in pickers) if (l.family == lang.family) AppLook.main(b) else AppLook.unchosen(b)
     }
 
     /** One row a word, in alphabetical order, each with its Remove. */
     private fun fill() {
-        val words = Settings.learned(this).sortedWith(String.CASE_INSENSITIVE_ORDER)
+        val words = Settings.learned(this, lang).sortedWith(String.CASE_INSENSITIVE_ORDER)
         empty.visibility = if (words.isEmpty()) View.VISIBLE else View.GONE
         list.removeAllViews()
         for (w in words) {
@@ -137,7 +170,7 @@ class DictionaryActivity : Activity(), SharedPreferences.OnSharedPreferenceChang
                     text = "Remove"
                     AppLook.action(this)
                     contentDescription = "Remove $w"
-                    setOnClickListener { Settings.removeLearned(this@DictionaryActivity, w) }
+                    setOnClickListener { Settings.removeLearned(this@DictionaryActivity, lang, w) }
                 })
             })
         }

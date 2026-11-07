@@ -20,6 +20,10 @@ data class Settings(
     val emojiSuggestions: Boolean = false,
     /** A light vibration as each key goes down. */
     val vibrate: Boolean = false,
+    /** The languages checked in the Languages screen, in its order: a flick on the space bar goes through them. */
+    val languages: List<Language> = listOf(Language.EN_US),
+    /** The one typed in now, always one of [languages]. */
+    val language: Language = Language.EN_US,
 ) {
     /** Swiping and emoji suggestions need the bar too: it is where they show. */
     val showsBar get() = suggestions || swipe || emojiSuggestions
@@ -47,7 +51,13 @@ data class Settings(
                 holdForMore = p.getBoolean("holdForMore", d.holdForMore),
                 emojiSuggestions = p.getBoolean("emojiSuggestions", d.emojiSuggestions),
                 vibrate = p.getBoolean("vibrate", d.vibrate),
-            )
+            ).let { s ->
+                // The screen's order, whatever order they were checked in; never none.
+                val ids = (p.getString("languages", null) ?: "").split(',')
+                val langs = Language.ALL.filter { it.id in ids }.ifEmpty { d.languages }
+                val now = Language.byId(p.getString("language", null))?.takeIf { it in langs } ?: langs[0]
+                s.copy(languages = langs, language = now)
+            }
         }
 
         fun write(context: Context, s: Settings) {
@@ -57,6 +67,8 @@ data class Settings(
                 .putBoolean("suggestions", s.suggestions).putBoolean("swipe", s.swipe)
                 .putBoolean("holdForMore", s.holdForMore).putBoolean("emojiSuggestions", s.emojiSuggestions)
                 .putBoolean("vibrate", s.vibrate)
+                .putString("languages", s.languages.joinToString(",") { it.id })
+                .putString("language", s.language.id)
                 .apply()
         }
 
@@ -66,11 +78,15 @@ data class Settings(
         const val LEARNED = "learned"
         private const val RECENT = "recentEmoji"
 
-        fun learned(context: Context): Set<String> = prefs(context).getStringSet(LEARNED, emptySet()) ?: emptySet()
-        fun addLearned(context: Context, word: String) =
-            prefs(context).edit().putStringSet(LEARNED, learned(context) + word.lowercase()).apply()
-        fun removeLearned(context: Context, word: String) =
-            prefs(context).edit().putStringSet(LEARNED, learned(context) - word.lowercase()).apply()
+        /** Where [lang]'s family keeps the owner's words: English where it always has, "learned_fr" and so on. */
+        fun learnedKey(lang: Language) = if (lang.english) LEARNED else "${LEARNED}_${lang.family}"
+
+        fun learned(context: Context, lang: Language): Set<String> =
+            prefs(context).getStringSet(learnedKey(lang), emptySet()) ?: emptySet()
+        fun addLearned(context: Context, lang: Language, word: String) =
+            prefs(context).edit().putStringSet(learnedKey(lang), learned(context, lang) + word.lowercase()).apply()
+        fun removeLearned(context: Context, lang: Language, word: String) =
+            prefs(context).edit().putStringSet(learnedKey(lang), learned(context, lang) - word.lowercase()).apply()
 
         fun recentEmoji(context: Context): List<String> =
             (prefs(context).getString(RECENT, "") ?: "").split('\n').filter { it.isNotEmpty() }
