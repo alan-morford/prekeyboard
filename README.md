@@ -125,6 +125,8 @@ at first. With more than one checked, a quick flick left or right on the space b
 next one or back, in the list's order, and the language's name shows on the space bar as it
 changes. Holding the space bar still moves the cursor.
 
+![The French keys, AZERTY, just after a flick to French](docs/french.png)
+
 - **Keys**: French gets AZERTY and German QWERTZ, the layouts their typists know; the
   printed alternates stay where they are, so orange + the third key of the top row is still
   `1`. On the French keys M stays on the bottom row, beside N. Spanish, Italian and the
