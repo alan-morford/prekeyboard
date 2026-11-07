@@ -35,10 +35,11 @@ class Composer(private val field: Field, private val clock: () -> Long) {
     /** Told about a word the owner picked as typed over its correction, so it can be remembered. */
     var onLearned: (String) -> Unit = {}
     /**
-     * Told when autocorrect changed a word: what it became, and how many characters the
-     * cursor is past its end once the edit is done (the space or punctuation that ended it).
+     * Told when autocorrect changed a word: what was typed, what it became, and how many
+     * characters the cursor is past its end once the edit is done (the space or punctuation
+     * that ended it).
      */
-    var onCorrected: (fixed: String, tail: Int) -> Unit = { _, _ -> }
+    var onCorrected: (typed: String, fixed: String, tail: Int) -> Unit = { _, _, _ -> }
 
     private class Correction(val typed: String, val fixed: String, val separator: String)
     private var last: Correction? = null
@@ -119,7 +120,7 @@ class Composer(private val field: Field, private val clock: () -> Long) {
                 after++
             }
         }
-        fixed?.let { onCorrected(it.fixed, after) }
+        fixed?.let { onCorrected(it.typed, it.fixed, after) }
         if (text == " ") markSpace()
         lastSpaceAt = if (text == " ") clock() else Long.MIN_VALUE / 2
     }
@@ -152,7 +153,7 @@ class Composer(private val field: Field, private val clock: () -> Long) {
         if (!rules.autocorrect) return
         val fix = correctWord("") ?: return
         field.batch { field.delete(fix.typed.length); field.commit(fix.fixed) }
-        onCorrected(fix.fixed, 0)
+        onCorrected(fix.typed, fix.fixed, 0)
     }
 
     /**
@@ -211,14 +212,14 @@ class Composer(private val field: Field, private val clock: () -> Long) {
         spaceTail = null
         val b = field.before(1)
         swipedSpace = b.isNotEmpty() && !b[0].isWhitespace() && b[0] !in OPENERS
-        var fixed: String? = null
+        var fixed: Correction? = null
         field.batch {
             if (swipedSpace && rules.autocorrect) correctWord(" ")?.let { fix ->
-                field.delete(fix.typed.length); field.commit(fix.fixed); fixed = fix.fixed
+                field.delete(fix.typed.length); field.commit(fix.fixed); fixed = fix
             }
             field.commit((if (swipedSpace) " " else "") + word + " ")
         }
-        fixed?.let { onCorrected(it, word.length + 2) }
+        fixed?.let { onCorrected(it.typed, it.fixed, word.length + 2) }
         swiped = word
         autoTail = "$word "
     }

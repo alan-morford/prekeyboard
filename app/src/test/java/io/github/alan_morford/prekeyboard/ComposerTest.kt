@@ -242,7 +242,7 @@ class ComposerTest {
 
     @Test fun saysWhatItCorrectedAndWhere() {
         val seen = ArrayList<Pair<String, Int>>()
-        composer.onCorrected = { w, tail -> seen += w to tail }
+        composer.onCorrected = { _, w, tail -> seen += w to tail }
         type("teh ")
         assertEquals(listOf("the" to 1), seen)
         type("cta.")                              // the period brings its space: two after the word

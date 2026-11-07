@@ -72,10 +72,10 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         Settings.prefs(this).registerOnSharedPreferenceChangeListener(this)
         clipboard.addPrimaryClipChangedListener(clipChanged)
         composer.onLearned = { Settings.addLearned(this, it); decoder?.add(it, LEARNED_SCORE) }
-        composer.onCorrected = { fixed, tail ->
+        composer.onCorrected = { typed, fixed, tail ->
             Haptics.corrected(this)
             // Once the whole key's work is done: then the word is marked.
-            main.post { markCorrection(fixed, tail + newlineAfter); newlineAfter = 0 }
+            main.post { markCorrection(typed, fixed, tail + newlineAfter); newlineAfter = 0 }
         }
         // The dictionary is 88,000 words: read it off the main thread, and correct nothing until
         // it is in.
@@ -205,17 +205,22 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
     /** Return went in as a new line after the word it finished: one more character past it. */
     private var newlineAfter = 0
 
-    /** A correction marked as composing text, waiting for the field to say where it is. */
-    private class Pending(val start: Int, val text: String, val timeout: Runnable)
+    /**
+     * A marked word being measured as composing text, waiting for the field to say where it
+     * is; then the cursor goes to [returnTo], when there is one (back where the owner was
+     * typing, after a tap swapped the word).
+     */
+    private class Pending(val start: Int, val text: String, val typed: String, val fixed: String,
+                          val timeout: Runnable, val returnTo: Int? = null)
     private var pending: Pending? = null
 
     /**
-     * Autocorrect just made [fixed], [tail] characters before the cursor. To learn where it is
-     * on screen, it is made the composing text for a moment: a field says where its composing
-     * text is (CursorAnchorInfo), and nothing else. Once it has said, or after a short wait,
-     * the word is plain text again ([settle]).
+     * Autocorrect just made [fixed] of [typed], [tail] characters before the cursor. To learn
+     * where it is on screen, it is made the composing text for a moment: a field says where
+     * its composing text is (CursorAnchorInfo), and nothing else. Once it has said, or after
+     * a short wait, the word is plain text again ([settle]).
      */
-    private fun markCorrection(fixed: String, tail: Int) {
+    private fun markCorrection(typed: String, fixed: String, tail: Int) {
         settle()
         val ic = currentInputConnection ?: return
         if (marks == null) return
@@ -226,10 +231,64 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         if (start < 0) return
         ownEdit()
         if (!ic.setComposingRegion(start, start + fixed.length)) return
-        val timeout = Runnable { settle() }
-        pending = Pending(start, fixed, timeout)
+        measure(Pending(start, fixed, typed, fixed, Runnable { settle() }))
+    }
+
+    /** Asks the field where [p]'s word (composing now) is; [settle] once it says, or after a wait. */
+    private fun measure(p: Pending) {
+        val ic = currentInputConnection ?: return
+        pending = p
         ic.requestCursorUpdates(InputConnection.CURSOR_UPDATE_IMMEDIATE or InputConnection.CURSOR_UPDATE_MONITOR)
-        main.postDelayed(timeout, ANCHOR_WAIT_MS)
+        main.postDelayed(p.timeout, ANCHOR_WAIT_MS)
+    }
+
+    /**
+     * The owner tapped a marked word: it changes to the other (what was typed, or back to the
+     * correction), is measured again for its new length, and the cursor goes back to [from],
+     * where it was before the tap, so typing carries on there and the next tap on the word is
+     * a move of the cursor too.
+     */
+    private fun toggleMark(m: MarkLayer.Mark, from: Int) {
+        val ic = currentInputConnection ?: return
+        val now = m.other
+        marks?.remove(listOf(m))
+        composer.forget()
+        ownEdit()
+        ic.beginBatchEdit()
+        val ok = ic.setComposingRegion(m.start, m.end)
+        if (ok) ic.setComposingText(now, 1)
+        ic.endBatchEdit()
+        if (!ok) return
+        // Where the owner was, moved along by the change in length if it was after the word.
+        val back = if (from >= m.end) from + now.length - m.text.length else if (from <= m.start) from else m.start + now.length
+        measure(Pending(m.start, now, m.typed, m.fixed, Runnable { settle() }, back))
+    }
+
+    /** The marked word that runs from [start] to [end] exactly (a long press selects a word), if any. */
+    private fun markSelected(start: Int, end: Int) = marks?.marks?.firstOrNull { it.start == start && it.end == end }
+
+    /** The word the add-to-dictionary popup was opened for by a long press on a marked word. */
+    private var askedMark: MarkLayer.Mark? = null
+
+    /**
+     * Backspace is about to take the last letter of a word autocorrect changed: it puts back
+     * what was typed instead, and the next backspace deletes from there. True when it did.
+     */
+    private fun backspaceIntoMark(): Boolean {
+        val layer = marks ?: return false
+        if (layer.marks.isEmpty() || pending != null) return false
+        val ic = currentInputConnection ?: return false
+        val cursor = cursorPosition(ic) ?: return false
+        val m = layer.marks.firstOrNull { it.end == cursor && it.text == it.fixed } ?: return false
+        if (ic.getTextBeforeCursor(m.text.length, 0)?.toString() != m.text) return false
+        layer.remove(listOf(m))
+        if (layer.marks.isEmpty()) stopFollowing()
+        composer.forget()
+        ic.beginBatchEdit()
+        ic.deleteSurroundingText(m.text.length, 0)
+        ic.commitText(m.typed, 1)
+        ic.endBatchEdit()
+        return true
     }
 
     /** Where the cursor is in the whole text: the one thing the keyboard isn't told for sure. */
@@ -252,9 +311,11 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         pending = null
         main.removeCallbacks(p.timeout)
         ownEdit()
-        currentInputConnection?.finishComposingText()
-        if (box != null) marks?.add(MarkLayer.Mark(p.start, p.text, box))
+        val ic = currentInputConnection
+        ic?.finishComposingText()
+        if (box != null) marks?.add(MarkLayer.Mark(p.start, p.text, box, p.typed, p.fixed))
         else if (marks?.marks.isNullOrEmpty()) stopFollowing()
+        p.returnTo?.let { ic?.setSelection(it, it) }
     }
 
     /** No marks left to keep in place: the field needn't report every move. */
@@ -298,10 +359,13 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
      * new text: each such one is checked against the text, and dropped unless it still holds
      * its word. Marks well behind the cursor can't have changed, since editing happens at it.
      */
-    private fun checkMarks(cursor: Int) {
+    private fun checkMarks(reported: Int) {
         val layer = marks ?: return
         if (layer.marks.isEmpty() || pending != null) return
         val ic = currentInputConnection ?: return
+        // Where the cursor is now: a report can be stale by the time it arrives (the keyboard
+        // moved the cursor again since), and the text read here is the text at the cursor now.
+        val cursor = cursorPosition(ic) ?: reported
         val gone = layer.marks.filter { m ->
             if (m.end < cursor - 1) return@filter false
             val ok = when {
@@ -415,7 +479,23 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
                                    candidatesStart: Int, candidatesEnd: Int) {
         super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd)
         swipeLikely = null
-        checkMarks(newSelStart)
+        // Selecting changes no text (and text "before the cursor" is then before the selection):
+        // the marks are checked once the cursor is a cursor again.
+        if (newSelStart == newSelEnd) checkMarks(newSelStart)
+        if (pending == null && SystemClock.uptimeMillis() - ownEditAt > OWN_EDIT_MS) {
+            // A long press on a marked word selects it. Showing what was typed (tapped back to it),
+            // the keyboard offers to keep that; showing the correction, it is just a selection.
+            val held = if (newSelStart != newSelEnd) markSelected(newSelStart, newSelEnd) else null
+            if (held != null && held.text == held.typed && canAdd(held.typed)) {
+                askedMark = held
+                view?.ask(held.typed)
+            }
+            // A tap on one: the cursor lands in it, from somewhere else. It swaps.
+            else if (newSelStart == newSelEnd && newSelStart != oldSelStart && oldSelStart == oldSelEnd) {
+                val m = marks?.marks?.firstOrNull { newSelStart in it.start..it.end && oldSelStart !in it.start..it.end }
+                if (m != null) { toggleMark(m, oldSelStart); return }
+            }
+        }
         // A selection, or the cursor taken elsewhere: the keyboard's last space is now ordinary.
         if (newSelStart != newSelEnd) composer.forget()
         // The cursor moved, and not by anything the keyboard did: the owner tapped the text.
@@ -638,6 +718,20 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
     }
 
     override fun onAddWord(word: String) {
+        // Kept from a long press on a marked word: the word as typed goes back in the text too.
+        askedMark?.let { m ->
+            askedMark = null
+            if (m.typed == word) {
+                marks?.remove(listOf(m))
+                val ic = currentInputConnection
+                if (ic != null && m.text != m.typed) {
+                    ownEdit()
+                    ic.beginBatchEdit()
+                    if (ic.setComposingRegion(m.start, m.end)) ic.commitText(m.typed, 1)
+                    ic.endBatchEdit()
+                }
+            }
+        }
         composer.corrector?.learn(word)
         Settings.addLearned(this, word)
         decoder?.add(word.lowercase(), LEARNED_SCORE)
@@ -733,6 +827,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         ownEdit()
         deletes++
         if (!word && composer.backspace()) return
+        if (!word && backspaceIntoMark()) return
         val ic = currentInputConnection ?: return
         if (!word) { sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL); return }
         // Held long enough, backspace takes the word before the cursor, and the spaces after it.

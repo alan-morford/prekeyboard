@@ -661,6 +661,15 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         invalidate()
     }
 
+    /** Opens the popup for [word] from outside the bar (a long press on a corrected word in the text). */
+    fun ask(word: String) {
+        if (asking != null) return
+        asking = word
+        askDown = false
+        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        invalidate()
+    }
+
     private fun askHit(x: Float, y: Float) = when {
         askYes.contains(x, y) -> 1
         askNo.contains(x, y) -> -1

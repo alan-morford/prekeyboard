@@ -60,7 +60,8 @@ class SetupActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
 
         column.addView(heading("Typing"))
         column.addView(toggle("Autocorrect", "Fixes typos and puts the apostrophe in contractions " +
-            "(dont → don't). Backspace straight after a correction undoes it.",
+            "(dont → don't). A corrected word is underlined in orange: tap it to switch back to what you " +
+            "typed, then hold it to add that to your dictionary. Backspace straight after a correction undoes it.",
             { Settings.read(this).autocorrect }) { v -> Settings.update(this) { it.copy(autocorrect = v) } })
         column.addView(toggle("Double-space period", "Two quick spaces after a word type \". \".",
             { Settings.read(this).doubleSpacePeriod }) { v -> Settings.update(this) { it.copy(doubleSpacePeriod = v) } })

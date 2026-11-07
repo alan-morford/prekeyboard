@@ -35,8 +35,10 @@ TouchPad keyboard. It shares no code with either.
 - **Fix a word**: tap a word in the text and the bar offers what else it might be (`ball` →
   `bell`, `bill`, `bull`); tap one and it takes the word's place
 - **Autocorrect** for typos, for contractions (`dont` → `don't`) and for words run together
-  (`theynare` → `they are`), each change marked with
-  an orange dashed underline and a light buzz, and undone by the next backspace
+  (`theynare` → `they are`), each change marked with an orange dashed underline and a light
+  buzz. Tap the underlined word to switch between what you typed and the correction (and,
+  showing what you typed, hold it to add that to your dictionary); backspacing into it puts
+  back what you typed first
 - **Vibrate on keys**, if you like: a light tap as each key goes down
 - **Double-space period**, and a period that brings its own space
 - **Emoji**: every emoji your phone can draw, by category, with your recent ones first
@@ -118,10 +120,18 @@ the keyboard on screen.
   where the word before all but settles it: `I think ill` becomes `I think I'll`, while
   `was ill`, `of its` and a sentence starting `Well` or `Were` stay as typed. Two words
   whose space was missed, or hit as the C, V, B or N just above it, come apart: `theyare`
-  and `theynare` both become `they are`. Backspace
-  straight after a correction puts back what you typed, without adding it to your dictionary
-  (to keep a word for good, tap it as typed in the bar or hold it there). A corrected word gets an orange dashed underline and the phone buzzes lightly,
-  so you can see what changed; the line stays while the word does, until you leave the field.
+  and `theynare` both become `they are`. Backspace straight after a correction puts back what
+  you typed, without adding it to your dictionary. A corrected word gets an orange dashed
+  underline and the phone buzzes lightly, so you can see what changed; the line stays while
+  the word does, until you leave the field. While it's there:
+  - **Tap the word** to switch it back to what you typed; tap again for the correction. The
+    cursor goes back to where you were typing.
+  - **Hold the word** while it shows what you typed (tap it back first), as you would to select
+    it, and the keyboard asks to add it to your dictionary; **Yes** keeps it from then on.
+    Held while it shows the correction, it's just selected as usual.
+  - **Backspace** that reaches the word turns it back into what you typed first (`about` →
+    `abowt`), then deletes from there.
+  To keep a word for good otherwise, tap it as typed in the bar, or hold it there.
   It stays out of passwords, email addresses and web addresses.
 - **Double-space period** (on by default): two quick spaces after a word type `. `.
 - **Suggestion bar** (off by default): three words above the keys as you type. The middle one,

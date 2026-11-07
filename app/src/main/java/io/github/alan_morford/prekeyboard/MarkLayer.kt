@@ -20,11 +20,15 @@ import android.view.View
 class MarkLayer(context: Context) : View(context) {
 
     /**
-     * A corrected word: where it is in the text, and its box in the field's own coordinates
-     * (left, top, right, and the line to draw on as bottom), which [fieldMatrix] takes to the screen.
+     * A corrected word: where it is in the text, what it shows now ([text]: the correction
+     * [fixed], or what was [typed] after a tap put it back), and its box in the field's own
+     * coordinates (left, top, right, and the line to draw on as bottom), which [fieldMatrix]
+     * takes to the screen.
      */
-    class Mark(val start: Int, val text: String, val local: RectF) {
+    class Mark(val start: Int, val text: String, val local: RectF, val typed: String, val fixed: String) {
         val end get() = start + text.length
+        /** What a tap on it would show instead. */
+        val other get() = if (text == fixed) typed else fixed
     }
 
     val marks = ArrayList<Mark>()
