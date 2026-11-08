@@ -11,6 +11,11 @@ it - in two styles:
 **Orange** prints the digits and the orange key in orange, as on the Pre. **White** prints
 everything white. Hold the globe on the Sym page to switch between them at any time.
 
+It types in **English** (US, UK, Canada and Australia), **French**, **German**, **Spanish** and
+**Italian**, each with its own keys (AZERTY for French, QWERTZ for German), dictionary and
+suggestions. Check the ones you use in the app, then flick the space bar left or right to
+switch between them; see [Languages](#languages).
+
 It began as the "Pre (Orange)" and "Pre (White)" layouts of
 [LuneOS's keyboard](https://github.com/webOS-ports/webos-keyboard), and the idea of bringing a
 webOS keyboard to Android comes from [Lunacy](https://github.com/webOSArchive/Lunacy)'s
