@@ -512,12 +512,28 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         }
     }
 
+    /**
+     * Whether the field's whole text ends with a newline; null when that can't be told (no
+     * answer, or more text after the cursor than is read).
+     */
+    private fun endsWithNewline(ic: android.view.inputmethod.InputConnection): Boolean? {
+        val after = ic.getTextAfterCursor(TEXT_END_PEEK, 0) ?: return null
+        if (after.length >= TEXT_END_PEEK) return null
+        if (after.isNotEmpty()) return after[after.length - 1] == '\n'
+        val before = ic.getTextBeforeCursor(1, 0) ?: return null
+        return before.isNotEmpty() && before[before.length - 1] == '\n'
+    }
+
     /** Asks the field where each marked word is now, and moves (or hides, if scrolled away) its mark. */
     @android.annotation.TargetApi(34)
     private fun remeasure(info: CursorAnchorInfo) {
         val ic = currentInputConnection ?: return
         val layer = marks ?: return
         if (layer.marks.isEmpty() || pending != null) return
+        // Text ending in a newline has an empty last line, and the field's own TextView throws
+        // on it ("the segment range can't be empty"), crashing the app (Discord, Messenger):
+        // not asked then. The marks stay where they were last measured till the next change.
+        if (endsWithNewline(ic) != false) return
         val area = RectF()
         val editor = info.editorBoundsInfo?.editorBounds
         if (editor != null) { area.set(editor); Matrix(info.matrix).mapRect(area) }
@@ -1256,6 +1272,8 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         private const val OWN_EDIT_MS = 400L
         /** How long after the field last changed its marked words are looked for again. */
         private const val REMEASURE_MS = 60L
+        /** How much text after the cursor is read to see how the field's text ends. */
+        private const val TEXT_END_PEEK = 4096
         private const val CLIP_DONE = "passed"
         private const val NEXT_WORDS_FILE = "next_words_mine.txt"
         /** Dictionaries kept in memory: the one in use, and the next and the one before. */
