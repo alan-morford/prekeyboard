@@ -22,6 +22,23 @@ class CorrectorTest {
     private fun fixes(typed: String, want: String) = assertEquals(typed, want, c.correct(typed))
     private fun keeps(typed: String) = assertNull(typed, c.correct(typed))
 
+    @Test fun aDeletedWordIsCorrectedAwayFromAndCanBePutBack() {
+        val d = File("src/main/assets/dictionary.txt").bufferedReader().useLines { Corrector(it) }
+        assertEquals(true, d.isKnown("om"))
+        assertNull(d.correct("om"))
+        d.learn("yest")
+        assertEquals("yest", d.suggestions("yest").first())
+        d.remove("om"); d.remove("yest")
+        assertEquals(false, d.isKnown("om"))
+        assertEquals(false, d.isKnown("yest"))
+        assertEquals(true, d.correct("om") != null)
+        assertEquals(true, "on" in d.suggestions("om"))
+        assertEquals(true, "test" in d.suggestions("yest") || "yes" in d.suggestions("yest"))
+        assertEquals(true, d.entries().none { it.first == "om" })
+        d.restore("om")
+        assertEquals(true, d.isKnown("om"))
+    }
+
     @Test fun contractions() {
         fixes("dont", "don't"); fixes("cant", "can't"); fixes("wont", "won't"); fixes("im", "I'm")
         fixes("Dont", "Don't"); fixes("youre", "you're"); fixes("didnt", "didn't"); fixes("thats", "that's")

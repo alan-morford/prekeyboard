@@ -51,8 +51,11 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         fun onSwipe(xs: FloatArray, ys: FloatArray, caps: Int) {}
         /** The swipe so far, every [LIVE_EVERY] ms while it goes on: for guesses in the bar as it grows. */
         fun onSwipeProgress(xs: FloatArray, ys: FloatArray, caps: Int) {}
-        /** The [i]th word in the suggestion bar was tapped: 0 left, 1 middle, 2 right. */
-        fun onPick(i: Int) {}
+        /**
+         * The [i]th word in the suggestion bar was tapped: 0 left, 1 middle, 2 right. [caps] is
+         * shift as it was ([CAPS_NONE], [CAPS_FIRST] or [CAPS_ALL]): the word goes in so.
+         */
+        fun onPick(i: Int, caps: Int) {}
         /** The notice in the suggestion bar was tapped. */
         fun onNotice() {}
         /** Backspace went down, or let go: the bar can wait till it's done deleting. */
@@ -65,10 +68,16 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         fun canAdd(word: String): Boolean = false
         /** The owner said yes to adding [word] to the dictionary. */
         fun onAddWord(word: String) {}
+        /** Whether [word], held in the bar, may be deleted from the dictionary (it is in it). */
+        fun canRemove(word: String): Boolean = false
+        /** The owner said yes to deleting [word] from the dictionary. */
+        fun onRemoveWord(word: String) {}
         /** The paste icon in the bar was tapped. */
         fun onPaste() {}
         /** A flick on the space bar: the next language ([step] 1, flicked right) or the one before (-1). */
         fun onLanguageFlick(step: Int) {}
+        /** A GIF or sticker from KLIPY was tapped on the emoji page, found by searching for [query]. */
+        fun onMedia(kind: Klipy.Kind, item: Klipy.Item, query: String?) {}
     }
 
     var settings = Settings.read(context)
@@ -110,7 +119,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
     private var navInset = 0
     private val bottomPad get() = 2 * dp + navInset
     /** The suggestion bar, above the keys: when it is switched on, or there is a notice to show in it. */
-    private val barShown get() = settings.showsBar || notice != null || voiceLine != null
+    private val barShown get() = settings.showsBar || notice != null || voiceLine != null || searchKind != null
     private val barHeight get() = if (barShown) Math.round(rowHeight * 0.72f).toFloat() else 0f
     private val keysHeight get() = barHeight + rowHeight * 4 + topBorder + bottomPad
 
@@ -204,19 +213,75 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
     private var page = Page.LETTERS
     private val rows get() = if (page == Page.SYMBOLS) Keymap.symbols else Keymap.letters(settings.language)
 
-    private val emoji = EmojiPanel(context, this, object : EmojiPanel.Actions {
-        override fun emoji(e: String) { host.onText(e) }
-        override fun backspace() { host.onBackspace(false) }
-        override fun letters() { show(Page.LETTERS) }
-    })
+    internal val emoji by lazy {
+        EmojiPanel(context, this, bold, object : EmojiPanel.Actions {
+            override fun emoji(e: String) { host.onText(e) }
+            override fun backspace() { host.onBackspace(false) }
+            override fun letters() { show(Page.LETTERS) }
+            override fun search(kind: Klipy.Kind, query: String?) { startSearch(kind, query) }
+            override fun media(kind: Klipy.Kind, item: Klipy.Item, query: String?) { host.onMedia(kind, item, query) }
+        })
+    }
 
     private fun show(p: Page) {
+        if (page == Page.EMOJI && p != Page.EMOJI) emoji.close()
         page = p
         alt = Alt.OFF
         if (p == Page.EMOJI) emoji.open()
         layoutKeys()
         invalidate()
     }
+
+    // --- Searching KLIPY ---------------------------------------------------------------------
+
+    /**
+     * A search for GIFs or stickers is being typed: the letters show, and what they type goes
+     * into the search field drawn in the bar, not into the app. Return searches.
+     */
+    private var searchKind: Klipy.Kind? = null
+    private val searchText = StringBuilder()
+    /** The search being typed, for the tests. */
+    internal val searching: String? get() = if (searchKind == null) null else searchText.toString()
+
+    private fun startSearch(kind: Klipy.Kind, query: String?) {
+        barChange {
+            searchKind = kind
+            searchText.setLength(0)
+            if (query != null) searchText.append(query)
+        }
+        shift = Shift.OFF; autoShift = false
+        show(Page.LETTERS)
+    }
+
+    /** Back to the GIFs or stickers: what was typed is searched for ([go]), or put away. */
+    private fun endSearch(go: Boolean) {
+        val kind = searchKind ?: return
+        val q = searchText.toString()
+        barChange { searchKind = null; searchText.setLength(0) }
+        if (!go) { show(Page.EMOJI); return }
+        show(Page.EMOJI)
+        emoji.searched(kind, q)
+    }
+
+    /** Typed text: into the search while there is one, else the app. */
+    private fun send(s: String) {
+        if (searchKind != null) { searchText.append(s); invalidate() } else host.onText(s)
+    }
+
+    private fun sendBackspace(word: Boolean) {
+        if (searchKind == null) { host.onBackspace(word); return }
+        if (word) {
+            val t = searchText.trimEnd()
+            searchText.setLength(t.lastIndexOf(' ') + 1)
+        } else if (searchText.isNotEmpty()) searchText.setLength(searchText.length - 1)
+        invalidate()
+    }
+
+    /** A word for a moment over the GIFs or stickers ("Sending…"). */
+    fun mediaSays(kind: Klipy.Kind, s: String, ms: Long = 2500) = emoji.say(kind, s, ms)
+
+    /** The keyboard went down: the GIFs stop moving. */
+    fun hidden() { if (page == Page.EMOJI) emoji.close() }
 
     // --- Layout -----------------------------------------------------------------------------
 
@@ -236,7 +301,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         zones.clear()
         if (width == 0) return
         if (page == Page.EMOJI) {
-            emoji.layout(RectF(0f, rowRect(0).top, width.toFloat(), rowRect(2).bottom), rowRect(3))
+            emoji.layout(keyboardTop() + topBorder, RectF(0f, rowRect(0).top, width.toFloat(), rowRect(2).bottom), rowRect(3))
             return
         }
         for ((i, row) in rows.withIndex()) {
@@ -264,8 +329,10 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
 
     override fun onDraw(c: Canvas) {
         val top = keyboardTop().toFloat()
-        painter.deck(c, RectF(0f, top + barHeight, width.toFloat(), height.toFloat()))
-        if (barShown) drawBar(c, RectF(0f, top, width.toFloat(), top + barHeight))
+        // The emoji page takes the suggestion bar's place for its tabs.
+        val emojiPage = page == Page.EMOJI
+        painter.deck(c, RectF(0f, if (emojiPage) top else top + barHeight, width.toFloat(), height.toFloat()))
+        if (barShown && !emojiPage) drawBar(c, RectF(0f, top, width.toFloat(), top + barHeight))
         if (page == Page.EMOJI) {
             emoji.draw(c, painter, style, emoji.pressed == EmojiPanel.BACK, emoji.pressed == EmojiPanel.ABC) { cv, s, r ->
                 functionLabel(cv, s, r)
@@ -645,6 +712,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
     private fun drawBar(c: Canvas, r: RectF) {
         barPaint.color = BAR
         c.drawRect(r, barPaint)
+        if (searchKind != null) { drawSearch(c, r); return }
         val cw = r.width() / 3
         // One baseline for every word, from the font rather than each word's ink, so a word
         // doesn't jump when a letter with a descender ("hop") comes along.
@@ -678,7 +746,8 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
                 painter.icon(c, Painter.Icon.PASTE, cell.centerX(), cell.centerY(), r.height() * 0.56f, Color.WHITE)
                 continue
             }
-            val w = words[i]
+            // Shown as shift will put it in: a capital first, or all capitals when locked.
+            val w = withShift(words[i])
             if (w.isEmpty()) continue
             // The likeliest word, in the middle, in the Pre's orange in either style.
             text.color = if (i == 1) Style.ORANGE.accent else Color.WHITE
@@ -687,10 +756,56 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         }
     }
 
+    /** Where the search's back arrow is, at the bar's left. */
+    private fun searchBack(r: RectF) = RectF(r.left, r.top, r.left + r.height() * 1.3f, r.bottom)
+
+    /** The search being typed: a back arrow, then the field, "Search KLIPY" till something is typed. */
+    private fun drawSearch(c: Canvas, r: RectF) {
+        val back = searchBack(r)
+        if (barPressed == 0) { barPaint.color = BAR_PRESSED; c.drawRect(back, barPaint) }
+        painter.icon(c, Painter.Icon.BACKSPACE, back.centerX(), back.centerY(), r.height() * 0.42f)
+        val pad = r.height() * 0.14f
+        val field = RectF(back.right, r.top + pad, r.right - 8 * dp, r.bottom - pad)
+        barPaint.color = Color.argb(40, 255, 255, 255)
+        c.drawRoundRect(field, field.height() / 2, field.height() / 2, barPaint)
+        painter.icon(c, Painter.Icon.SEARCH, field.left + field.height() * 0.6f, field.centerY(), field.height() * 0.5f, Color.argb(170, 255, 255, 255))
+        val left = field.left + field.height() * 1.1f
+        val room = field.right - left - field.height() * 0.5f
+        text.textSize = field.height() * 0.5f
+        val fm = text.fontMetrics
+        val baseline = field.centerY() - (fm.ascent + fm.descent) / 2
+        val typed = searchText.toString()
+        if (typed.isEmpty()) {
+            text.color = Color.WHITE; text.alpha = 130
+            c.drawText("Search KLIPY", left, baseline, text)
+            text.alpha = 255
+            barPaint.color = Style.ORANGE.accent
+            c.drawRect(left - 1 * dp, field.top + field.height() * 0.22f, left + 1 * dp, field.bottom - field.height() * 0.22f, barPaint)
+            return
+        }
+        // The end of what's typed, where the cursor is, when it's too long to show whole.
+        var shown = typed
+        while (shown.length > 1 && text.measureText(shown) > room) shown = shown.substring(1)
+        text.color = Color.WHITE
+        c.drawText(shown, left, baseline, text)
+        val x = left + text.measureText(shown) + 2 * dp
+        barPaint.color = Style.ORANGE.accent
+        c.drawRect(x - 1 * dp, field.top + field.height() * 0.22f, x + 1 * dp, field.bottom - field.height() * 0.22f, barPaint)
+    }
+
+    /** [w] as shift would type it now. */
+    private fun withShift(w: String) = when (shift) {
+        Shift.OFF -> w
+        Shift.ONCE -> w.replaceFirstChar { it.uppercaseChar() }
+        Shift.LOCK -> w.uppercase(java.util.Locale.forLanguageTag(settings.language.tag))
+    }
+
     // --- Holding a word in the bar: add it to the dictionary -------------------------------
 
     /** The word the popup offers to add, while it is up. */
     private var asking: String? = null
+    /** The popup asks to delete [asking] from the dictionary, not to add it. */
+    private var askingRemove = false
     private val askBox = RectF()
     /** The popup's buttons, where they were last drawn (the tests press them too). */
     internal val askYes = RectF()
@@ -704,7 +819,13 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         val i = barPressed
         if (i < 0 || showingNotice || voiceLine != null || pasteAt(i)) return@Runnable
         val w = words[i]
-        if (w.isEmpty() || !host.canAdd(w)) return@Runnable
+        if (w.isEmpty()) return@Runnable
+        // A word the dictionary lacks may be added; one it has (a typo it knows: "yest"), deleted.
+        askingRemove = when {
+            host.canAdd(w) -> false
+            host.canRemove(w) -> true
+            else -> return@Runnable
+        }
         barPressed = -1
         asking = w
         askDown = false
@@ -716,6 +837,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
     fun ask(word: String) {
         if (asking != null) return
         asking = word
+        askingRemove = false
         askDown = false
         performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
         invalidate()
@@ -740,7 +862,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
                 val hit = askHit(e.x, e.y)
                 if (hit == askPressed) {
                     asking = null
-                    if (hit == 1 && word != null) host.onAddWord(word)
+                    if (hit == 1 && word != null) { if (askingRemove) host.onRemoveWord(word) else host.onAddWord(word) }
                 }
                 askDown = false; askPressed = 0
             }
@@ -765,7 +887,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         val boxTop = top + Math.max(4 * dp, (barHeight + rowHeight - h) / 2 + 4 * dp)
         askBox.set(left, boxTop, left + w, boxTop + h)
         bubble(c, askBox)
-        val question = "Add \u201c$word\u201d to dictionary?"
+        val question = if (askingRemove) "Delete \u201c$word\u201d from dictionary?" else "Add \u201c$word\u201d to dictionary?"
         text.textSize = fitted(question, rowHeight * 0.33f, w - 2 * pad)
         text.color = Color.WHITE
         centred(c, question, RectF(left, boxTop + pad, left + w, boxTop + pad + lineH))
@@ -805,7 +927,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
     private var swiping = false
     private var lastLive = 0L
 
-    private fun canSwipe(z: Zone): Boolean = settings.swipe && wordsAllowed && page == Page.LETTERS &&
+    private fun canSwipe(z: Zone): Boolean = settings.swipe && wordsAllowed && page == Page.LETTERS && searchKind == null &&
         alt == Alt.OFF && z.key.kind == Kind.CHAR && z.key.text.length == 1 && z.key.text[0] in 'a'..'z'
 
     private fun addSwipePoint(x: Float, y: Float) {
@@ -864,7 +986,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
     private val hold = Runnable {
         val z = pressed ?: return@Runnable
         when (z.key.kind) {
-            Kind.SPACE -> { held = true; startCursor(downX, downY) }
+            Kind.SPACE -> if (searchKind == null) { held = true; startCursor(downX, downY) }
             Kind.ORANGE -> {
                 held = true
                 performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
@@ -876,7 +998,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
                 host.onToggleStyle()
             }
             else -> when {
-                z.key.corner == Corner.MIC -> {
+                z.key.corner == Corner.MIC && searchKind == null -> {
                     held = true
                     performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                     preview = null
@@ -906,7 +1028,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
             if (pressed?.key?.kind != Kind.BACKSPACE) return
             repeats++
             val word = repeats * LETTER_REPEAT > WORD_DELETE_AFTER
-            host.onBackspace(word)
+            sendBackspace(word)
             handler.postDelayed(this, if (word) WORD_REPEAT else LETTER_REPEAT)
         }
     }
@@ -920,9 +1042,8 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         when (z.key.kind) {
             Kind.BACKSPACE -> {
                 repeats = 0
-                deleting = true
-                host.onBackspaceHeld(true)
-                host.onBackspace(false)
+                if (searchKind == null) { deleting = true; host.onBackspaceHeld(true) }
+                sendBackspace(false)
                 handler.postDelayed(repeat, FIRST_REPEAT)
             }
             Kind.SPACE -> handler.postDelayed(hold, HOLD_FOR_CURSOR)
@@ -950,6 +1071,16 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         }
         if (asking != null) return askTouch(e)
         val x = e.x; val y = e.y
+        if (searchKind != null && (barPressed >= 0 || (e.actionMasked == MotionEvent.ACTION_DOWN && barCell(x, y) >= 0))) {
+            val back = searchBack(RectF(0f, keyboardTop().toFloat(), width.toFloat(), keyboardTop() + barHeight))
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> { barPressed = if (back.contains(x, y)) 0 else 1; if (barPressed == 0) keyFeedback() }
+                MotionEvent.ACTION_UP -> { val was = barPressed; barPressed = -1; if (was == 0 && back.contains(x, y)) endSearch(go = false) }
+                MotionEvent.ACTION_CANCEL -> barPressed = -1
+            }
+            invalidate()
+            return true
+        }
         // A touch that starts in the suggestion bar stays there.
         if (e.actionMasked == MotionEvent.ACTION_DOWN) barPressed = -1
         if (barPressed >= 0 || (e.actionMasked == MotionEvent.ACTION_DOWN && barCell(x, y) >= 0)) {
@@ -966,7 +1097,11 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
                     if (voiceLine != null) { if (listening && barCell(x, y) >= 0) host.onVoice() }
                     else if (showingNotice) { if (barCell(x, y) >= 0) host.onNotice() }
                     else if (barCell(x, y) == i && pasteAt(i)) host.onPaste()
-                    else if (barCell(x, y) == i && words[i].isNotEmpty()) host.onPick(i)
+                    else if (barCell(x, y) == i && words[i].isNotEmpty()) {
+                        host.onPick(i, capsNow())
+                        // Shift for one letter is spent on the word, as a letter would spend it.
+                        if (shift == Shift.ONCE) { shift = Shift.OFF; autoShift = false; lastShiftTap = NEVER }
+                    }
                 }
                 MotionEvent.ACTION_CANCEL -> { handler.removeCallbacks(barHold); barPressed = -1 }
             }
@@ -1149,17 +1284,17 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
                 lastAltTap = if (alt == Alt.OFF) NEVER else now
             }
             Kind.SYM -> show(if (page == Page.LETTERS) Page.SYMBOLS else Page.LETTERS)
-            Kind.EMOJI -> show(Page.EMOJI)
+            Kind.EMOJI -> if (searchKind != null) endSearch(go = false) else show(Page.EMOJI)
             Kind.BACKSPACE -> {}           // sent on the way down, and repeated since
-            Kind.RETURN -> host.onEnter()
+            Kind.RETURN -> if (searchKind != null) endSearch(go = true) else host.onEnter()
             Kind.GLOBE -> host.onPickKeyboard()
-            Kind.SPACE -> host.onText(" ")
+            Kind.SPACE -> send(" ")
             Kind.CHAR -> type(output(key), usedAlt = alt != Alt.OFF && key.alt != null)
         }
     }
 
     private fun type(s: String, usedAlt: Boolean) {
-        host.onText(s)
+        send(s)
         // A one-shot spent is not half of a double tap.
         if (shift == Shift.ONCE) { shift = Shift.OFF; autoShift = false; lastShiftTap = NEVER }
         if (usedAlt && alt == Alt.ONCE) { alt = Alt.OFF; lastAltTap = NEVER }
@@ -1167,7 +1302,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
 
     /** The field has moved on: offer a capital where it wants one, unless shift was chosen by hand. */
     fun updateCaps() {
-        if (page != Page.LETTERS || shift == Shift.LOCK || (shift == Shift.ONCE && !autoShift)) return
+        if (page != Page.LETTERS || searchKind != null || shift == Shift.LOCK || (shift == Shift.ONCE && !autoShift)) return
         val caps = host.wantsCaps()
         val next = if (caps) Shift.ONCE else Shift.OFF
         if (next != shift) { shift = next; invalidate() }
@@ -1178,6 +1313,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
     fun reset() {
         shift = Shift.OFF; autoShift = false; alt = Alt.OFF
         lastShiftTap = NEVER; lastAltTap = NEVER
+        if (searchKind != null) barChange { searchKind = null; searchText.setLength(0) }
         if (page != Page.LETTERS) show(Page.LETTERS)
         extended = null; extendedFrame = null; pressed = null; preview = null
         cursorMode = false; held = false

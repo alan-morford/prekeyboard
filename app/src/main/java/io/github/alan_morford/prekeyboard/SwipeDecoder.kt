@@ -58,6 +58,11 @@ class SwipeDecoder(entries: Sequence<Pair<String, Int>>) {
         for (list in buckets.values) list.removeAll { it.learned && it.word.equals(word, ignoreCase = true) }
     }
 
+    /** A word the owner deleted from the dictionary: gone, wherever it came from. */
+    @Synchronized fun forget(word: String) {
+        for (list in buckets.values) list.removeAll { it.word.equals(word, ignoreCase = true) }
+    }
+
     private class Candidate(val w: Word, val letters: Int, val score: Float) {
         /** The word's ideal path, resampled; its point-for-point distance from the finger's. */
         val wx = FloatArray(POINTS); val wy = FloatArray(POINTS)

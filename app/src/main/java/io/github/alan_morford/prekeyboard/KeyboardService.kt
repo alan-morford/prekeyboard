@@ -1,6 +1,7 @@
 package io.github.alan_morford.prekeyboard
 
 import android.Manifest
+import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -9,6 +10,7 @@ import android.inputmethodservice.InputMethodService
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.RectF
+import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
@@ -23,6 +25,7 @@ import android.view.inputmethod.CursorAnchorInfo
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputConnection
+import android.view.inputmethod.InputContentInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.FrameLayout
 import java.io.File
@@ -87,7 +90,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
     @Volatile private var wordsFor: Language? = null
 
     /** A dictionary, ready to use: corrector and swipe decoder, and the owner's words they were given. */
-    private class Dictionary(val corrector: Corrector, val decoder: SwipeDecoder, var learned: Set<String>)
+    private class Dictionary(val corrector: Corrector, val decoder: SwipeDecoder, var learned: Set<String>, var removed: Set<String>)
     /** What the next word may be, and the emoji for words: per family ("en", "fr"). */
     private class FamilyWords(val next: NextWords, val emoji: EmojiWords)
 
@@ -156,11 +159,13 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         val c = try { Corrector(readers.asSequence().flatMap { it.lineSequence() }, lang) }
             finally { readers.forEach { it.close() } }
         if (lang.has(Language.CONTRACTIONS)) lines(Language.CONTRACTIONS).useLines { c.loadContractions(it) }
+        val removed = Settings.removed(app, lang)
+        c.removeAll(removed)
         val learned = Settings.learned(app, lang)
         c.learnAll(learned)
         val d = SwipeDecoder(c.entries())
         for (w in learned) d.add(w, LEARNED_SCORE)
-        return Dictionary(c, d, learned)
+        return Dictionary(c, d, learned, removed)
     }
 
     private fun readFamily(app: android.content.Context, lang: Language): FamilyWords {
@@ -204,6 +209,19 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         refreshBar()
     }
 
+    /** Words deleted from the dictionary, or put back in the dictionary screen: the keyboard follows. */
+    private fun syncRemoved() {
+        val dict = dictionary ?: return
+        val now = Settings.removed(this, language)
+        for (w in now - dict.removed) { dict.corrector.remove(w); dict.decoder.forget(w) }
+        for (w in dict.removed - now) {
+            dict.corrector.restore(w)
+            dict.corrector.listed(w)?.let { (spelt, score) -> dict.decoder.add(spelt, score) }
+        }
+        dict.removed = now
+        refreshBar()
+    }
+
     override fun onDestroy() {
         Settings.prefs(this).unregisterOnSharedPreferenceChangeListener(this)
         clipboard.removePrimaryClipChangedListener(clipChanged)
@@ -219,6 +237,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
     override fun onSharedPreferenceChanged(prefs: SharedPreferences?, key: String?) {
         if (key == Settings.VOICE_PENDING) return
         if (key != null && key.startsWith(Settings.LEARNED)) { syncLearned(); return }
+        if (key != null && key.startsWith(Settings.REMOVED)) { syncRemoved(); return }
         val s = Settings.read(this)
         if (s.language != language) useLanguage(s.language)
         view?.apply(s)
@@ -273,6 +292,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
+        view?.hidden()
         clearMarks()
         voice.stop(now = true)
         deleting = false
@@ -624,15 +644,58 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         refreshBar()
     }
 
+    // --- GIFs and stickers ------------------------------------------------------------------
+
+    /**
+     * A GIF or sticker tapped on the emoji page: fetched, then handed to the app as a picture
+     * (Android 7.1 and later, where the field says it takes one), or else its link typed in.
+     */
+    override fun onMedia(kind: Klipy.Kind, item: Klipy.Item, query: String?) {
+        val v = view ?: return
+        val field = editor
+        val accepted: Array<String> = if (Build.VERSION.SDK_INT >= 25) field?.contentMimeTypes ?: emptyArray() else emptyArray()
+        val choice = Media.choose(kind, item) { mime -> accepted.any { ClipDescription.compareMimeTypes(mime, it) } }
+        if (choice == null) {
+            val link = Media.link(item) ?: return
+            settle(); ownEdit(); composer.forget()
+            currentInputConnection?.commitText(link, 1)
+            refreshBar()
+            v.mediaSays(kind, "This app takes no ${kind.noun}: here's the link")
+            Klipy.shared(this, kind, item, query)
+            return
+        }
+        v.mediaSays(kind, "Sending…")
+        val app = applicationContext
+        Klipy.background {
+            val uri = runCatching { MediaProvider.save(app, choice.fileName(item), Klipy.get(choice.file.url)) }.getOrNull()
+            main.post {
+                // The owner moved on to another field meanwhile: it isn't sent there.
+                if (editor !== field || view !== v) return@post
+                if (uri == null) { v.mediaSays(kind, "Couldn't fetch that one. Try again?"); return@post }
+                val ic = currentInputConnection ?: return@post
+                val info = InputContentInfo(uri, ClipDescription(item.title.ifEmpty { kind.noun }, arrayOf(choice.mime)), Uri.parse(choice.file.url))
+                settle(); ownEdit(); composer.forget()
+                val sent = Build.VERSION.SDK_INT >= 25 &&
+                    ic.commitContent(info, InputConnection.INPUT_CONTENT_GRANT_READ_URI_PERMISSION, null)
+                if (sent) { v.mediaSays(kind, "Sent", 900); Klipy.shared(this, kind, item, query) }
+                else v.mediaSays(kind, "This app wouldn't take it")
+                refreshBar()
+            }
+        }
+    }
+
     // --- Updates ----------------------------------------------------------------------------
 
+    /** The bar's notice: a crash to report comes before a new version. */
     private fun showUpdateNotice() {
-        view?.notice = Updater.pending(this)?.let { "Pre Keyboard ${it.version} is available. Tap to see what's new." }
+        view?.notice = if (CrashLog.hasPending(this)) "Pre Keyboard crashed. Tap to send the report."
+            else Updater.pending(this)?.let { "Pre Keyboard ${it.version} is available. Tap to see what's new." }
     }
 
     override fun onNotice() {
         requestHideSelf(0)
-        startActivity(Intent(this, UpdateActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        val screen = if (CrashLog.hasPending(this)) CrashActivity::class.java else UpdateActivity::class.java
+        startActivity(Intent(this, screen).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
     /** The Pre's keyboard never took over the screen. */
@@ -859,9 +922,11 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         nw.learn(ctx, spelt)
     }
 
-    override fun onPick(i: Int) {
+    override fun onPick(i: Int, caps: Int) {
         settle()
-        val word = bar.getOrNull(i)?.takeIf { it.isNotEmpty() } ?: return
+        val shown = bar.getOrNull(i)?.takeIf { it.isNotEmpty() } ?: return
+        // Shift on (or the sentence's capital waiting): the word goes in with it.
+        val word = if (i == 2 && barEmoji) shown else withCaps(shown, caps)
         val at = barWord
         if (at != null) { replaceTapped(at, word); return }
         ownEdit()
@@ -870,6 +935,13 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         if (i == 2 && barEmoji) Settings.addRecentEmoji(this, word)
         learnPair()
         refreshBar()
+    }
+
+    /** [word] as shift says: its first letter a capital, or all of it. */
+    private fun withCaps(word: String, caps: Int) = when (caps) {
+        KeyboardView.CAPS_FIRST -> word.replaceFirstChar { it.uppercaseChar() }
+        KeyboardView.CAPS_ALL -> word.uppercase(java.util.Locale.forLanguageTag(language.tag))
+        else -> word
     }
 
     /**
@@ -914,6 +986,24 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         composer.corrector?.learn(word)
         Settings.addLearned(this, language, word)
         decoder?.add(word.lowercase(), LEARNED_SCORE)
+        refreshBar()
+    }
+
+    /** A word held in the bar can be deleted when the dictionary (its own words or the owner's) has it. */
+    override fun canRemove(word: String): Boolean {
+        val c = composer.corrector ?: return false
+        return word.isNotEmpty() && word.all { it.isLetter() || it == '\'' } && word[0].isLetter() && c.isKnown(word)
+    }
+
+    /** The owner said yes to deleting [word]: never offered or corrected to again, in this language. */
+    override fun onRemoveWord(word: String) {
+        val w = word.lowercase()
+        dictionary?.let { d ->
+            d.corrector.remove(w); d.decoder.forget(w)
+            d.removed = d.removed + w; d.learned = d.learned - w
+        }
+        Settings.addRemoved(this, language, w)
+        swipeGuesses = swipeGuesses.filter { !it.equals(word, ignoreCase = true) }
         refreshBar()
     }
 

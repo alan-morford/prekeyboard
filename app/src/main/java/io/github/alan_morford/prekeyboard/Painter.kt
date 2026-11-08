@@ -116,7 +116,7 @@ class Painter(private val dp: Float) {
     private val left = poly(4, 32, 28, 10, 28, 24, 60, 24, 60, 40, 28, 40, 28, 54)
     private val ret = poly(46, 6, 60, 6, 60, 44, 28, 44, 28, 58, 4, 37, 28, 16, 28, 30, 46, 30)
 
-    enum class Icon { SHIFT, SHIFT_ON, SHIFT_LOCK, BACKSPACE, RETURN, GLOBE, EMOJI, CURSOR, MIC, GEAR, PASTE }
+    enum class Icon { SHIFT, SHIFT_ON, SHIFT_LOCK, BACKSPACE, RETURN, GLOBE, EMOJI, CURSOR, MIC, GEAR, PASTE, STICKER, SEARCH, CLOSE }
 
     /** Shift, when the next letter (or every letter) will be a capital: the Pre's orange, in either style. */
     private val shiftLit = Style.ORANGE.accent
@@ -186,6 +186,30 @@ class Painter(private val dp: Float) {
                 c.drawLine(25f, 44f, 35f, 44f, p)
                 p.style = Paint.Style.FILL
                 c.drawRoundRect(RectF(22f, 3f, 42f, 15f), 3f, 3f, p)
+            }
+            // The emoji page's sticker tab: a smiling sticker, its corner peeling up.
+            Icon.STICKER -> {
+                p.style = Paint.Style.STROKE; p.strokeWidth = 4.5f; p.strokeJoin = Paint.Join.ROUND; p.strokeCap = Paint.Cap.ROUND
+                c.drawPath(Path().apply {
+                    moveTo(16f, 6f); lineTo(48f, 6f); quadTo(58f, 6f, 58f, 16f); lineTo(58f, 38f)
+                    lineTo(38f, 58f); lineTo(16f, 58f); quadTo(6f, 58f, 6f, 48f); lineTo(6f, 16f); quadTo(6f, 6f, 16f, 6f); close()
+                }, p)
+                c.drawPath(Path().apply { moveTo(58f, 38f); lineTo(44f, 38f); quadTo(38f, 38f, 38f, 44f); lineTo(38f, 58f) }, p)
+                c.drawArc(RectF(18f, 22f, 42f, 44f), 25f, 110f, false, p)
+                p.style = Paint.Style.FILL
+                c.drawCircle(23f, 23f, 3.4f, p); c.drawCircle(38f, 23f, 3.4f, p)
+            }
+            // The search field's magnifying glass.
+            Icon.SEARCH -> {
+                p.style = Paint.Style.STROKE; p.strokeWidth = 6f; p.strokeCap = Paint.Cap.ROUND
+                c.drawCircle(27f, 27f, 17f, p)
+                p.strokeWidth = 8f
+                c.drawLine(40f, 40f, 56f, 56f, p)
+            }
+            // Clearing a search.
+            Icon.CLOSE -> {
+                p.style = Paint.Style.STROKE; p.strokeWidth = 7f; p.strokeCap = Paint.Cap.ROUND
+                c.drawLine(12f, 12f, 52f, 52f, p); c.drawLine(52f, 12f, 12f, 52f, p)
             }
         }
         c.restore()

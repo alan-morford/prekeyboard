@@ -37,6 +37,7 @@ class KeyboardViewTest {
     private var swipes = 0
     private var progress = 0
     private val picks = ArrayList<Int>()
+    private val pickCaps = ArrayList<Int>()
     private val host = object : KeyboardView.Host {
         override fun onText(text: String) { typed.append(text) }
         override fun onBackspace(word: Boolean) { if (typed.isNotEmpty()) typed.setLength(typed.length - 1) }
@@ -48,12 +49,14 @@ class KeyboardViewTest {
         override fun wantsCaps() = caps
         override fun onSwipe(xs: FloatArray, ys: FloatArray, caps: Int) { swipes++ }
         override fun onSwipeProgress(xs: FloatArray, ys: FloatArray, caps: Int) { progress++ }
-        override fun onPick(i: Int) { picks += i }
+        override fun onPick(i: Int, caps: Int) { picks += i; pickCaps += caps }
         override fun onVoice() { voices++ }
         override fun onOpenApp() { opened++ }
         override fun onBackspaceHeld(held: Boolean) { heldEvents += held }
         override fun canAdd(word: String) = word == "zorp"
         override fun onAddWord(word: String) { added += word }
+        override fun canRemove(word: String) = word == "yest"
+        override fun onRemoveWord(word: String) { removed += word }
         override fun onPaste() { pastes++ }
         override fun onLanguageFlick(step: Int) { flicks += step }
     }
@@ -65,12 +68,18 @@ class KeyboardViewTest {
     private val flicks = ArrayList<Int>()
     private val heldEvents = ArrayList<Boolean>()
     private val added = ArrayList<String>()
+    private val removed = ArrayList<String>()
     private var listening: KeyboardView? = null
     private val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
         listening?.apply(Settings.read(context))
     }
 
-    @Before fun setUp() { context = RuntimeEnvironment.getApplication() }
+    @Before fun setUp() {
+        context = RuntimeEnvironment.getApplication()
+        // No network in the tests: the GIF and sticker tabs show they have no key.
+        Klipy.key = ""
+        EmojiPanel.lastTab = EmojiPanel.Tab.EMOJI
+    }
 
     private fun keyboard(style: Style = Style.ORANGE, hold: Boolean = true): KeyboardView {
         Settings.write(context, Settings(style, Settings.Height.MEDIUM, holdForMore = hold))
@@ -234,12 +243,12 @@ class KeyboardViewTest {
         assertEquals(1, picked)
         tap(v, 3, 2.2f)                            // the emoji key
         shot(v, "orange-emoji")
-        // The first emoji of the grid (recent is empty, so it is the first smiley).
-        val top = v.keyboardTop() + (v.height - v.keyboardTop()) * 0.08f
+        // The first emoji of the grid, under the tabs (recent is empty, so it is the first smiley).
+        val top = v.keyboardTop() + (v.height - v.keyboardTop()) / 4.2f * 1.1f
         val t = SystemClock.uptimeMillis()
         touch(v, MotionEvent.ACTION_DOWN, v.width / 20f, top, t); touch(v, MotionEvent.ACTION_UP, v.width / 20f, top, t + 30)
         assertEquals("😀", typed.toString())
-        tap(v, 3, 0.5f)                            // ABC
+        emojiAbc(v)
         letter(v, 'q')
         assertEquals("😀q", typed.toString())
 
@@ -249,6 +258,92 @@ class KeyboardViewTest {
         assertEquals(true, v.isLayoutRequested)
         v.measure(View.MeasureSpec.makeMeasureSpec(v.width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
         assertEquals(true, v.measuredHeight > before)
+    }
+
+    /** The middle of the [i]th tab along the top of the emoji page (0 Emoji, 1 GIF, 2 sticker). */
+    private fun topTab(v: KeyboardView, i: Int): Pair<Float, Float> {
+        val dp = context.resources.displayMetrics.density
+        val left = Math.min(v.width * 0.15f, 72 * dp) + 4 * dp
+        val tab = Math.min(v.width * 0.15f, 70 * dp)
+        val rowH = (v.height - v.keyboardTop()) / 4.2f
+        return left + tab * (i + 0.5f) to v.keyboardTop() + rowH * 0.2f + rowH * 0.3f
+    }
+
+    /** ABC, at the left of the emoji page's tabs. */
+    private fun emojiAbc(v: KeyboardView) {
+        val (_, y) = topTab(v, 0)
+        tapAt(v, 20 * context.resources.displayMetrics.density, y)
+    }
+
+    private fun tapAt(v: KeyboardView, x: Float, y: Float) {
+        val t = SystemClock.uptimeMillis()
+        touch(v, MotionEvent.ACTION_DOWN, x, y, t); touch(v, MotionEvent.ACTION_UP, x, y, t + 30)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(60))
+    }
+
+    /** Measured and laid out again, as Android would after the bar came or went. */
+    private fun relayout(v: KeyboardView) {
+        v.measure(View.MeasureSpec.makeMeasureSpec(v.width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+        v.layout(0, 0, v.measuredWidth, v.measuredHeight)
+    }
+
+    /** A key's centre counted up from the bottom, so it holds with the bar up or not. */
+    private fun key(v: KeyboardView, row: Int, col: Float): Pair<Float, Float> {
+        val dp = context.resources.displayMetrics.density
+        val rowH = Settings.Height.MEDIUM.dp * dp
+        return v.width * col / 10f to v.height - 2 * dp - (3 - row + 0.5f) * rowH
+    }
+
+    private fun keyTap(v: KeyboardView, row: Int, col: Float) { val (x, y) = key(v, row, col); tapAt(v, x, y) }
+
+    private fun keyLetter(v: KeyboardView, ch: Char) {
+        val i = letters.indexOf(ch)
+        when {
+            i in 0..9 -> keyTap(v, 0, i + 0.5f)
+            i >= 10 -> keyTap(v, 1, i - 10 + 0.5f)
+            else -> keyTap(v, 2, "zxcvbnm".indexOf(ch) + 1.5f)
+        }
+    }
+
+    @Test fun gifTabSearchTypesIntoTheSearchNotTheApp() {
+        val v = keyboard()
+        keyTap(v, 3, 8.9f)                         // Sym
+        keyTap(v, 3, 2.2f)                         // the emoji key
+        val (gx, gy) = topTab(v, 1)
+        tapAt(v, gx, gy)                           // GIF
+        assertEquals(EmojiPanel.Tab.GIF, v.emoji.tab)
+        shot(v, "orange-gif")
+        // The search field, beside the tabs: the letters come up, typing into it, the bar above them.
+        tapAt(v, v.width * 0.75f, gy)
+        assertEquals("", v.searching)
+        relayout(v)
+        shot(v, "orange-gif-search-empty")
+        "cat".forEach { keyLetter(v, it) }
+        keyTap(v, 3, 5f)                           // space
+        keyLetter(v, 's')
+        keyTap(v, 1, 9.5f)                         // backspace
+        assertEquals("cat ", v.searching)
+        shot(v, "orange-gif-search")
+        assertEquals("", typed.toString())
+        // Return searches: back to the GIFs, showing what was asked for.
+        keyTap(v, 2, 9.4f)
+        assertEquals(null, v.searching)
+        relayout(v)
+        assertEquals(EmojiPanel.Tab.GIF, v.emoji.tab)
+        assertEquals("cat", v.emoji.query(Klipy.Kind.GIF))
+        shot(v, "orange-gif-searched")
+        // The sticker tab, and back to the emoji.
+        val (sx, sy) = topTab(v, 2)
+        tapAt(v, sx, sy)
+        assertEquals(EmojiPanel.Tab.STICKER, v.emoji.tab)
+        shot(v, "orange-stickers")
+        val (ex, ey) = topTab(v, 0)
+        tapAt(v, ex, ey)
+        assertEquals(EmojiPanel.Tab.EMOJI, v.emoji.tab)
+        // Typing in the app again once the page is left.
+        emojiAbc(v)
+        keyLetter(v, 'q')
+        assertEquals("q", typed.toString())
     }
 
     @Test fun holdOrangeTogglesHoldGlobeSwitchesStyleAndHoldSpaceMovesTheCursor() {
@@ -412,6 +507,53 @@ class KeyboardViewTest {
         touch(v, MotionEvent.ACTION_DOWN, v.askYes.centerX(), v.askYes.centerY(), t + 2800)
         touch(v, MotionEvent.ACTION_UP, v.askYes.centerX(), v.askYes.centerY(), t + 2850)
         assertEquals(listOf("zorp"), added)
+        Settings.update(context) { it.copy(suggestions = false) }
+    }
+
+    @Test fun holdingAKnownWordInTheBarOffersToDeleteIt() {
+        val v = keyboard()
+        Settings.update(context) { it.copy(suggestions = true) }
+        relayout(v)
+        v.setSuggestions(listOf("yest", "test", "yes"))
+        val barY = v.keyboardTop() + 10f
+        val t = SystemClock.uptimeMillis()
+        touch(v, MotionEvent.ACTION_DOWN, v.width / 6f, barY, t)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(700))
+        touch(v, MotionEvent.ACTION_UP, v.width / 6f, barY, t + 700)
+        assertEquals(emptyList<Int>(), picks)
+        shot(v, "orange-delete-word")
+        v.draw(Canvas(Bitmap.createBitmap(v.width, v.height, Bitmap.Config.ARGB_8888)))
+        touch(v, MotionEvent.ACTION_DOWN, v.askYes.centerX(), v.askYes.centerY(), t + 800)
+        touch(v, MotionEvent.ACTION_UP, v.askYes.centerX(), v.askYes.centerY(), t + 850)
+        assertEquals(listOf("yest"), removed)
+        assertEquals(emptyList<String>(), added)
+        Settings.update(context) { it.copy(suggestions = false) }
+    }
+
+    @Test fun aWordPickedFromTheBarFollowsShift() {
+        val v = keyboard(hold = false)
+        Settings.update(context) { it.copy(suggestions = true) }
+        relayout(v)
+        v.setSuggestions(listOf("the", "and", "but"))
+        val barY = v.keyboardTop() + 10f
+        val x = v.width * 0.5f
+        fun pick() {
+            val t = SystemClock.uptimeMillis()
+            touch(v, MotionEvent.ACTION_DOWN, x, barY, t); touch(v, MotionEvent.ACTION_UP, x, barY, t + 30)
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(600))
+        }
+        pick()                                     // shift off
+        keyTap(v, 3, 0.7f)                         // shift: once
+        pick()
+        pick()                                     // spent on the word before
+        keyTap(v, 3, 0.7f)                         // shift once: the bar shows "And"
+        shot(v, "orange-bar-shift")
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(600))   // not a double tap
+        keyTap(v, 3, 0.7f)                         // off again
+        keyTap(v, 3, 0.7f); keyTap(v, 3, 0.7f)     // double tap: locked, the bar shows "AND"
+        shot(v, "orange-bar-caps-lock")
+        pick()
+        assertEquals(listOf(KeyboardView.CAPS_NONE, KeyboardView.CAPS_FIRST, KeyboardView.CAPS_NONE, KeyboardView.CAPS_ALL), pickCaps)
         Settings.update(context) { it.copy(suggestions = false) }
     }
 

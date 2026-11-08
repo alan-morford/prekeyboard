@@ -154,7 +154,15 @@ class SetupActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
         super.onResume()
         Settings.prefs(this).registerOnSharedPreferenceChangeListener(this)
         refreshers.forEach { it() }
+        // A crash since last time: the offer to report it, here as well as in the keyboard's bar.
+        if (CrashLog.hasPending(this) && !crashOffered) {
+            crashOffered = true
+            startActivity(Intent(this, CrashActivity::class.java))
+        }
     }
+
+    /** The crash report was offered once while this screen was open. */
+    private var crashOffered = false
 
     override fun onPause() {
         Settings.prefs(this).unregisterOnSharedPreferenceChangeListener(this)

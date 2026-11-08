@@ -102,7 +102,26 @@ class Corrector(lines: Sequence<String>, val lang: Language = Language.EN_US) {
     @Volatile var follows: (String, String) -> Boolean = { _, _ -> false }
 
     /** Every word with its score, for the swipe decoder. */
-    fun entries(): Sequence<Pair<String, Int>> = words.values.asSequence().map { it.word to it.score }
+    fun entries(): Sequence<Pair<String, Int>> =
+        words.values.asSequence().filter { it.word.lowercase() !in removed }.map { it.word to it.score }
+
+    /**
+     * Words the owner took out of the dictionary ("yest", "om"): never offered or corrected
+     * to again, and corrected away from when typed, as if the word list didn't have them.
+     */
+    // Read by the suggestion thread while the keyboard may add to it: synchronised.
+    private val removed: MutableSet<String> = java.util.Collections.synchronizedSet(HashSet<String>())
+
+    /** The dictionary's entry for a lower-case [key], unless the owner took it out. */
+    private fun entry(key: String): Entry? = words[key]?.takeIf { key !in removed }
+
+    fun remove(word: String) { val k = word.lowercase(); removed += k; learned -= k }
+    fun removeAll(ws: Collection<String>) { for (w in ws) remove(w) }
+    /** Put back in, from the dictionary screen. */
+    fun restore(word: String) { removed -= word.lowercase() }
+
+    /** The dictionary's own spelling and score for [word], taken out or not; null if it hasn't it. */
+    fun listed(word: String): Pair<String, Int>? = words[word.lowercase()]?.let { it.word to it.score }
 
     fun learn(word: String) { learned += word.lowercase() }
     fun learnAll(ws: Collection<String>) { for (w in ws) learn(w) }
@@ -111,7 +130,7 @@ class Corrector(lines: Sequence<String>, val lang: Language = Language.EN_US) {
 
     fun isKnown(word: String): Boolean {
         lang.elided(word)?.let { return isKnown(it.second) || word.lowercase() in learned }
-        return word.lowercase().let { it in words || it in learned }
+        return word.lowercase().let { entry(it) != null || it in learned }
     }
 
     /**
@@ -121,7 +140,7 @@ class Corrector(lines: Sequence<String>, val lang: Language = Language.EN_US) {
     fun spelling(word: String): String? {
         lang.elided(word)?.let { return spelling(it.second) }
         val lower = word.lowercase()
-        return words[lower]?.word ?: lower.takeIf { it in learned }
+        return entry(lower)?.word ?: lower.takeIf { it in learned }
     }
 
     /**
@@ -143,7 +162,7 @@ class Corrector(lines: Sequence<String>, val lang: Language = Language.EN_US) {
             AMBIGUOUS[lower]?.let { if (contractionMeant(lower, context)) return casedLike(typed, it) }
         }
 
-        words[lower]?.let { e ->
+        entry(lower)?.let { e ->
             // Known. Only its capital can be wrong: "i", or "london" for "London".
             return if (typed == lower && e.word != lower) e.word else null
         }
@@ -159,7 +178,7 @@ class Corrector(lines: Sequence<String>, val lang: Language = Language.EN_US) {
 
     /** [w] typed without the accents of a word ("deja" for "déjà"), however many it has. */
     private fun accented(w: String): Pair<String, Float>? {
-        val e = plain[Language.fold(w)] ?: return null
+        val e = plain[Language.fold(w)]?.takeIf { it.word.lowercase() !in removed } ?: return null
         if (e.word.equals(w, ignoreCase = true)) return null
         return e.word to e.score - COST_WEIGHT * ACCENT
     }
@@ -172,7 +191,7 @@ class Corrector(lines: Sequence<String>, val lang: Language = Language.EN_US) {
         var best: Pair<String, Float>? = null
         for (e in lang.elisions) {
             if (w.length < e.length + 2 || !w.startsWith(e)) continue
-            val rest = words[w.substring(e.length)] ?: continue
+            val rest = entry(w.substring(e.length)) ?: continue
             // Only before a vowel or a silent h does a word elide.
             if (Language.base(rest.word[0].lowercaseChar()) !in "aeiouyh") continue
             val value = rest.score - COST_WEIGHT * MISSED_APOSTROPHE
@@ -195,13 +214,13 @@ class Corrector(lines: Sequence<String>, val lang: Language = Language.EN_US) {
         when {
             fix != null -> out += fix
             lower in learned -> out += typed
-            else -> words[lower]?.let { out += casedLike(typed, it.word) }
+            else -> entry(lower)?.let { out += casedLike(typed, it.word) }
         }
         // A word that is also a contraction without its apostrophe ("ill", "its"): the
         // contraction next, since nothing else here would find it; or, when the context made
         // it the contraction, the word as typed next.
         if (lang.english) {
-            if (fix != null && lower in AMBIGUOUS) words[lower]?.let { out += casedLike(typed, it.word) }
+            if (fix != null && lower in AMBIGUOUS) entry(lower)?.let { out += casedLike(typed, it.word) }
             out.firstOrNull()?.let { first -> AMBIGUOUS[first.lowercase()]?.let { out += casedLike(typed, it) } }
         }
         for (w in completions(lower, 2)) out += casedLike(typed, w)
@@ -264,7 +283,7 @@ class Corrector(lines: Sequence<String>, val lang: Language = Language.EN_US) {
         var i = lo
         var looked = 0
         while (i < sorted.size && sorted[i].startsWith(prefix) && looked < COMPLETION_SCAN) {
-            if (sorted[i].length > prefix.length) words[sorted[i]]?.let { found += it }
+            if (sorted[i].length > prefix.length) entry(sorted[i])?.let { found += it }
             i++; looked++
         }
         return found.sortedByDescending { it.score }.take(max).map { it.word }
@@ -297,8 +316,8 @@ class Corrector(lines: Sequence<String>, val lang: Language = Language.EN_US) {
         if (w.length < 3) return null
         var best: Pair<String, Float>? = null
         fun consider(a: String, b: String, cost: Float) {
-            val ea = words[a] ?: return
-            val eb = words[b] ?: return
+            val ea = entry(a) ?: return
+            val eb = entry(b) ?: return
             if (ea.score < halfScore(a) || eb.score < halfScore(b)) return
             val paired = follows(a, b)
             // Two little words that don't go together ("to on" for "toon") are likelier a slip
@@ -328,7 +347,7 @@ class Corrector(lines: Sequence<String>, val lang: Language = Language.EN_US) {
         val found = ArrayList<Pair<Entry, Float>>()
         for ((s, cost) in cands) {
             if (cost > maxCost) continue
-            val e = words[s] ?: continue
+            val e = entry(s) ?: continue
             if (e.score < minScore) continue
             found += e to (e.score - weight * cost)
         }

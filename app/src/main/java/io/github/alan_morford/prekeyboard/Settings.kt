@@ -86,10 +86,32 @@ data class Settings(
 
         fun learned(context: Context, lang: Language): Set<String> =
             prefs(context).getStringSet(learnedKey(lang), emptySet()) ?: emptySet()
+        /** [word] added: no longer among the deleted, if it was. */
         fun addLearned(context: Context, lang: Language, word: String) =
-            prefs(context).edit().putStringSet(learnedKey(lang), learned(context, lang) + word.lowercase()).apply()
+            prefs(context).edit()
+                .putStringSet(learnedKey(lang), learned(context, lang) + word.lowercase())
+                .putStringSet(removedKey(lang), removed(context, lang) - word.lowercase())
+                .apply()
         fun removeLearned(context: Context, lang: Language, word: String) =
             prefs(context).edit().putStringSet(learnedKey(lang), learned(context, lang) - word.lowercase()).apply()
+
+        /** Where [lang]'s family keeps the dictionary's words the owner deleted: "removed", "removed_fr". */
+        fun removedKey(lang: Language) = if (lang.english) REMOVED else "${REMOVED}_${lang.family}"
+        const val REMOVED = "removed"
+
+        fun removed(context: Context, lang: Language): Set<String> =
+            prefs(context).getStringSet(removedKey(lang), emptySet()) ?: emptySet()
+
+        /** [word] deleted: out of the owner's own words too, if it was one. */
+        fun addRemoved(context: Context, lang: Language, word: String) {
+            val w = word.lowercase()
+            prefs(context).edit()
+                .putStringSet(removedKey(lang), removed(context, lang) + w)
+                .putStringSet(learnedKey(lang), learned(context, lang) - w)
+                .apply()
+        }
+        fun restoreRemoved(context: Context, lang: Language, word: String) =
+            prefs(context).edit().putStringSet(removedKey(lang), removed(context, lang) - word.lowercase()).apply()
 
         fun recentEmoji(context: Context): List<String> =
             (prefs(context).getString(RECENT, "") ?: "").split('\n').filter { it.isNotEmpty() }

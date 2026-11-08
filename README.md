@@ -35,8 +35,10 @@ TouchPad keyboard. It shares no code with either.
   if you like, an emoji for the word on the right (`pizza` → 🍕)
 - **Next-word suggestions**: before you start a word, the bar offers the three likeliest next
   words (`I` → `don't`, `think`, `know`), learning the ones you use
-- **Your own words**: hold a word in the bar to add it to the dictionary, and see, add or
-  remove them in the app
+- **Your own words**: hold a word in the bar to add it to the dictionary, or hold one it
+  already knows to delete it (`yest`, `om`); see, add, remove or put back words in the app
+- **GIFs and stickers** from [KLIPY](https://klipy.com), next to the emoji: trending or
+  searched for, moving as you scroll, sent straight into the app
 - **Speech input**: hold the period and talk
 - **Paste**: copy or cut something and a clipboard icon waits in the bar's right-hand place
   until you tap it to paste
@@ -55,7 +57,10 @@ TouchPad keyboard. It shares no code with either.
   dot (switch it on in the app, or hold the orange key)
 - **Cursor control**: hold the space bar and slide; with shift on, it selects
 - The **globe** asks which keyboard to use; hold Return on the Sym page to open the app
-- Shift lights orange whenever the next letter will be a capital
+- Shift lights orange whenever the next letter will be a capital, and the bar's words follow
+  it: a capital first, or all capitals with caps lock
+- **Crash reports**: if the keyboard ever crashes, it offers to email what went wrong (nothing
+  you typed) next time it comes up
 - Small, Medium and Large heights
 - Every setting takes effect at once, with the keyboard still on screen
 - **Updates itself**: it looks for a new release once a day and offers it above the keys
@@ -94,8 +99,14 @@ TouchPad keyboard. It shares no code with either.
 - **Punctuation after a space**: typed a space, then decided on a comma? `, . ? ! : ;` typed
   straight after the space go against the word and the space moves after them (`word ,` →
   `word, `).
-- **Emoji**: every emoji your phone can draw, by category, with your recent ones first.
-  Scroll the grid, or tap a category along the bottom.
+- **Emoji, GIFs and stickers**: the smiley opens a page with **ABC**, **Emoji**, **GIF** and a
+  sticker along the top. Emoji: every emoji your phone can draw, by category, with your recent
+  ones first; scroll the grid, or tap a category along the bottom. GIF and stickers: what's
+  trending on KLIPY, filling the whole keyboard, with **Search KLIPY** beside the tabs. Tap
+  the search and type on the letters (Return searches, the arrow goes back); tap × to clear
+  it. Tap a GIF or sticker to send it. Apps that take pictures from a keyboard (Android 7.1
+  and later) get the picture; others get its link. They move on Android 9 and later as they
+  are, and before that as GIFs.
 - **Hold for more** (off at first; switch it on in the app, or hold the orange key): hold a
   key for its accents or extra symbols, slide to the one you want and let go. Keys that have
   them carry a small dot in the style's colour.
@@ -189,6 +200,9 @@ the keyboard on screen.
   in orange, is the likeliest - what the space bar would make of your word. On the left is the
   word as you typed it, when that differs; tap it to keep it, and it is never corrected again,
   or hold it for **Add to dictionary?** (Yes keeps it from then on, as tapping it would).
+  Hold a word the dictionary already has for **Delete from dictionary?**: Yes and it is never
+  offered or corrected to again, and typing it gets it corrected. With shift on, the words
+  show (and go in) with a capital; with caps lock, in capitals.
   Before you start a word, the bar offers the three likeliest next words, from everyday
   English and from what you usually type after the word before (kept on the phone; not in
   incognito fields). Tap a word already in the text and the bar offers the nearest other
@@ -207,8 +221,9 @@ the keyboard on screen.
   on silent or vibrate.
 - **Edit dictionary**: the words you added (by holding them in the bar, or by tapping them
   as typed there), each with **Remove**, and a field to add one. Autocorrect leaves these words
-  alone and swiping can spell them; a word you remove is corrected again. With languages
-  of more than one kind checked, buttons along the top pick whose words to show.
+  alone and swiping can spell them; a word you remove is corrected again. Below them, the
+  words you deleted, each with **Put back**. With languages of more than one kind checked,
+  buttons along the top pick whose words to show.
 - **Updates**: shows the version, with **Check now**. The keyboard itself looks for a new
   release on GitHub once a day, when it comes up, and says so in the bar above the keys; tap
   that for the release notes, then **Install** or **Later** (asked again a day later). The
@@ -256,6 +271,16 @@ JDK 17 or later and the Android SDK (platform 35):
 ./gradlew :app:assembleDebug          # app/build/outputs/apk/debug/app-debug.apk
 ./gradlew :app:testDebugUnitTest      # typing, autocorrect and rendering checks
 ```
+
+Two optional lines in `local.properties` (which stays out of the repository):
+
+```properties
+klipy.key=...          # a KLIPY app key (partner.klipy.com): without one, GIF and sticker tabs say so
+crash.email=...        # where crash reports are offered to be emailed: without one, the owner fills it in
+```
+
+Both end up readable in the APK. A KLIPY key in testing mode allows 100 API calls an hour
+(the pictures themselves don't count); the keyboard keeps answers for an hour and stops at 90.
 
 The tests run on the JVM with Robolectric, which draws the real keyboard: they leave
 screenshots of every page in `app/build/shots/`.
@@ -311,3 +336,4 @@ An APK built that way contains the font, so keep it to yourself.
 
 Apache 2.0 - see [LICENSE](LICENSE). The word lists are CC BY-SA 4.0, the next-word and contraction
 lists CC BY 2.0 FR and the emoji lists are under the Unicode License; see [NOTICE](NOTICE).
+GIFs and stickers are KLIPY's, loaded from KLIPY as you browse; none ship with the keyboard.

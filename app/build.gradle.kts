@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -9,6 +11,23 @@ val commitCount: Int = runCatching {
         .inputStream.bufferedReader().readText().trim().toInt()
 }.getOrDefault(1)
 
+/**
+ * KLIPY's app key, for the GIFs and stickers: from local.properties (`klipy.key=...`, kept out
+ * of the repository) or the KLIPY_KEY environment variable. Without one the tabs say so.
+ */
+val klipyKey: String = run {
+    val props = Properties()
+    rootDir.resolve("local.properties").takeIf { it.isFile }?.inputStream()?.use { props.load(it) }
+    (props.getProperty("klipy.key") ?: System.getenv("KLIPY_KEY") ?: "").trim()
+}
+
+/** Where crash reports are offered to be emailed: local.properties `crash.email=...`; blank, the owner fills it in. */
+val crashEmail: String = run {
+    val props = Properties()
+    rootDir.resolve("local.properties").takeIf { it.isFile }?.inputStream()?.use { props.load(it) }
+    (props.getProperty("crash.email") ?: "").trim()
+}
+
 android {
     namespace = "io.github.alan_morford.prekeyboard"
     compileSdk = 35
@@ -18,7 +37,9 @@ android {
         // The newest Android: no "built for an older version of Android" warning on install.
         targetSdk = 35
         versionCode = commitCount
-        versionName = "1.2.1"
+        versionName = "1.3.0"
+        buildConfigField("String", "CRASH_EMAIL", "\"" + crashEmail.replace("\"", "") + "\"")
+        buildConfigField("String", "KLIPY_KEY", "\"" + klipyKey.replace("\"", "") + "\"")
     }
     buildTypes {
         release {
@@ -37,6 +58,7 @@ android {
     // Robolectric draws the real keyboard on the JVM, for screenshots and typing checks.
     testOptions { unitTests { isIncludeAndroidResources = true } }
     dependenciesInfo { includeInApk = false }
+    buildFeatures { buildConfig = true }
 }
 
 dependencies {
