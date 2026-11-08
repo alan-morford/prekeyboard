@@ -80,6 +80,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
 
     /** New settings, applied in place: a new style repaints, a new height (or bar) re-lays the keyboard. */
     fun apply(s: Settings) {
+        if (s.sound) Sounds.prepare(context)
         val resize = s.height != settings.height || s.showsBar != settings.showsBar
         val relayout = s.language != settings.language
         settings = s
@@ -347,29 +348,40 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
 
     private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
-    // --- The language's name, flashed on the space bar as it changes -------------------------
+    // --- The language's name on the space bar ---------------------------------------------
 
-    private var flashName: String? = null
-    private var flashAt = 0L
+    private var flashAt = Long.MIN_VALUE / 2
 
-    /** Shows [name] on the space bar for a moment, then fades it: the Pre's space bar is otherwise bare. */
-    fun flashLanguage(name: String) {
-        flashName = name
+    /**
+     * The language just changed: its name shows bright on the space bar for a moment, then
+     * fades almost into the key, and stays there, faint, while more than one is checked.
+     */
+    fun flashLanguage(@Suppress("UNUSED_PARAMETER") name: String) {
         flashAt = SystemClock.uptimeMillis()
         invalidate()
     }
 
     private fun drawLanguageFlash(c: Canvas, box: RectF) {
-        val name = flashName ?: return
+        if (settings.languages.size < 2) return
+        val name = settings.language.short
         val age = SystemClock.uptimeMillis() - flashAt
-        if (age >= FLASH_SHOW + FLASH_FADE) { flashName = null; return }
-        val fade = if (age <= FLASH_SHOW) 1f else 1f - (age - FLASH_SHOW).toFloat() / FLASH_FADE
-        text.textSize = fitted(name, rowHeight * 0.3f, box.width() - 12 * dp)
+        val alpha = when {
+            age <= FLASH_SHOW -> FLASH_ALPHA
+            age < FLASH_SHOW + FLASH_FADE ->
+                FLASH_ALPHA - (FLASH_ALPHA - RESTING_ALPHA) * (age - FLASH_SHOW) / FLASH_FADE
+            else -> RESTING_ALPHA
+        }
+        // One size and one baseline for every language, so the names don't jump as they
+        // change: the size the longest name fits at, and centred on a capital's height (the
+        // ç of Français hangs below the line rather than lifting the word).
+        val longest = Language.ALL.maxByOrNull { text.textSize = rowHeight * 0.3f; text.measureText(it.short) }!!.short
+        text.textSize = fitted(longest, rowHeight * 0.3f, box.width() - 12 * dp)
         text.color = Color.WHITE
-        text.alpha = (230 * fade).toInt()
-        centred(c, name, box)
+        text.alpha = alpha.toInt()
+        text.getTextBounds("H", 0, 1, ink)
+        c.drawText(name, box.centerX() - text.measureText(name) / 2f, box.centerY() + ink.height() / 2f, text)
         text.alpha = 255
-        postInvalidateOnAnimation()
+        if (age < FLASH_SHOW + FLASH_FADE) postInvalidateOnAnimation()
     }
 
     private fun functionLabel(c: Canvas, s: String, box: RectF) {
@@ -999,8 +1011,11 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         return true
     }
 
-    /** A key went down: a light tap of the vibrator, when the owner has asked for it. */
-    private fun keyFeedback() { if (settings.vibrate) Haptics.key(context) }
+    /** A key went down: a light tap of the vibrator, and a click, when the owner has asked for them. */
+    private fun keyFeedback() {
+        if (settings.vibrate) Haptics.key(context)
+        if (settings.sound) Sounds.key(context)
+    }
 
     /** The finger whose press is being followed; another one down at the same time is someone else's tap. */
     private var finger = NO_FINGER
@@ -1211,9 +1226,12 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         private const val CURSOR_STEP_X = 12f
         /** How far across, in keys, a flick on the space bar goes to change language. */
         private const val FLICK_KEYS = 1.2f
-        /** The language's name on the space bar: shown this long, then fading for this long. */
+        /** The language's name on the space bar: shown this long, then fading for this long... */
         private const val FLASH_SHOW = 900L
         private const val FLASH_FADE = 400L
+        /** ...from this white to this, just off the key's own black. */
+        private const val FLASH_ALPHA = 230L
+        private const val RESTING_ALPHA = 46L
 
         private const val NO_FINGER = -1
 

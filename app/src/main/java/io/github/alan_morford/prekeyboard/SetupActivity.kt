@@ -98,6 +98,9 @@ class SetupActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
             { Settings.read(this).holdForMore }) { v -> Settings.update(this) { it.copy(holdForMore = v) } })
         column.addView(toggle("Vibrate on keys", "A light tap of the vibrator as each key goes down.",
             { Settings.read(this).vibrate }) { v -> Settings.update(this) { it.copy(vibrate = v) } })
+        column.addView(toggle("Sound on keys", "A click as each key goes down. Quiet while the phone " +
+            "is on silent or vibrate.",
+            { Settings.read(this).sound }) { v -> Settings.update(this) { it.copy(sound = v) } })
 
         column.addView(heading("Dictionary"))
         column.addView(note("Words you added by holding them in the suggestion bar, or kept by tapping them as typed in the bar."))

@@ -90,7 +90,7 @@ class Language(
         const val EMOJI_WORDS = "emoji_words.txt"
         const val CONTRACTIONS = "contractions.txt"
 
-        val EN_US = Language("en_US", "English (US)", "English", "en-US", Layout.QWERTY, null, null)
+        val EN_US = Language("en_US", "English (US)", "English (US)", "en-US", Layout.QWERTY, null, null)
 
         val ALL: List<Language> = listOf(
             EN_US,

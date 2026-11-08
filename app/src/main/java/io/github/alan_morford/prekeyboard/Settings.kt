@@ -20,6 +20,8 @@ data class Settings(
     val emojiSuggestions: Boolean = false,
     /** A light vibration as each key goes down. */
     val vibrate: Boolean = false,
+    /** A click as each key goes down. */
+    val sound: Boolean = false,
     /** The languages checked in the Languages screen, in its order: a flick on the space bar goes through them. */
     val languages: List<Language> = listOf(Language.EN_US),
     /** The one typed in now, always one of [languages]. */
@@ -51,6 +53,7 @@ data class Settings(
                 holdForMore = p.getBoolean("holdForMore", d.holdForMore),
                 emojiSuggestions = p.getBoolean("emojiSuggestions", d.emojiSuggestions),
                 vibrate = p.getBoolean("vibrate", d.vibrate),
+                sound = p.getBoolean("sound", d.sound),
             ).let { s ->
                 // The screen's order, whatever order they were checked in; never none.
                 val ids = (p.getString("languages", null) ?: "").split(',')
@@ -66,7 +69,7 @@ data class Settings(
                 .putBoolean("autocorrect", s.autocorrect).putBoolean("doubleSpacePeriod", s.doubleSpacePeriod)
                 .putBoolean("suggestions", s.suggestions).putBoolean("swipe", s.swipe)
                 .putBoolean("holdForMore", s.holdForMore).putBoolean("emojiSuggestions", s.emojiSuggestions)
-                .putBoolean("vibrate", s.vibrate)
+                .putBoolean("vibrate", s.vibrate).putBoolean("sound", s.sound)
                 .putString("languages", s.languages.joinToString(",") { it.id })
                 .putString("language", s.language.id)
                 .apply()

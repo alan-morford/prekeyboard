@@ -27,6 +27,8 @@ class MarkLayer(context: Context) : View(context) {
      */
     class Mark(val start: Int, val text: String, val local: RectF, val typed: String, val fixed: String) {
         val end get() = start + text.length
+        /** Off the field's visible part (scrolled away): kept, but not drawn till it is back. */
+        var visible = true
         /** What a tap on it would show instead. */
         val other get() = if (text == fixed) typed else fixed
     }
@@ -53,11 +55,19 @@ class MarkLayer(context: Context) : View(context) {
 
     fun clear() { if (marks.isNotEmpty()) { marks.clear(); invalidate() } }
 
+    /** The field's text moved by [dx], [dy] in its own coordinates (it scrolled): the marks go with it. */
+    fun shift(dx: Float, dy: Float) {
+        if (marks.isEmpty()) return
+        for (m in marks) m.local.offset(dx, dy)
+        invalidate()
+    }
+
     override fun onDraw(c: Canvas) {
         val m = fieldMatrix ?: return
         if (marks.isEmpty()) return
         getLocationOnScreen(here)
         for (mark in marks) {
+            if (!mark.visible) continue
             box.set(mark.local)
             m.mapRect(box)
             val y = box.bottom - here[1]

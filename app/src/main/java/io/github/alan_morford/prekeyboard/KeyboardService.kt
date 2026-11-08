@@ -251,6 +251,9 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         editor = info
         composer.reset()
         clearMarks()
+        // A new field: it may say where its text is, or not.
+        noTextBounds = false
+        lastAnchor = null
         // Where the cursor is as the field opens, the owner put it (or left it): a word it
         // touches gets alternatives, as a word tapped would.
         tapped = true
@@ -410,6 +413,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
     private fun stopFollowing() { currentInputConnection?.requestCursorUpdates(0) }
 
     private fun clearMarks() {
+        main.removeCallbacks(remeasure)
         pending?.let { main.removeCallbacks(it.timeout) }
         pending = null
         if (marks?.marks?.isNotEmpty() == true) { marks?.clear(); stopFollowing() }
@@ -417,6 +421,8 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
 
     override fun onUpdateCursorAnchorInfo(info: CursorAnchorInfo) {
         val layer = marks ?: return
+        val was = lastAnchor
+        lastAnchor = Anchor(info)
         val p = pending
         if (p != null && info.composingTextStart == p.start && info.composingText?.toString() == p.text) {
             var box: RectF? = null
@@ -438,8 +444,93 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
             settle(box)
             return
         }
-        // The field moved or scrolled: the marks follow it.
-        if (layer.marks.isNotEmpty()) layer.fieldMatrix = Matrix(info.matrix)
+        // The field moved: the marks follow it. Its text may have moved inside it too
+        // (scrolled, or wrapped onto a new line): they follow that as well.
+        if (layer.marks.isNotEmpty()) {
+            layer.fieldMatrix = Matrix(info.matrix)
+            follow(info, was)
+        }
+    }
+
+    /** Where the cursor was, as the field last said: its place in the text, and on screen. */
+    private class Anchor(info: CursorAnchorInfo) {
+        val offset = info.selectionEnd
+        val x = info.insertionMarkerHorizontal
+        val top = info.insertionMarkerTop
+        val bottom = info.insertionMarkerBottom
+    }
+    private var lastAnchor: Anchor? = null
+    /** The field can't say where its text is ([remeasure]): the marks follow the cursor instead. */
+    private var noTextBounds = false
+    private var anchorInfo: CursorAnchorInfo? = null
+    private val remeasure = Runnable { anchorInfo?.let { if (Build.VERSION.SDK_INT >= 34) remeasure(it) } }
+
+    /**
+     * The marks are kept where their words are. From Android 14 the field is asked where the
+     * words are now ([remeasure]), shortly after it last changed. Before that, or when the
+     * field can't say, the marks move as the cursor shows the text has: the cursor moved
+     * without the text changing (the field scrolled), or typing started a new line yet the
+     * cursor stayed on the same height (the text went up a line under it).
+     */
+    private fun follow(info: CursorAnchorInfo, was: Anchor?) {
+        if (Build.VERSION.SDK_INT >= 34 && !noTextBounds) {
+            anchorInfo = info
+            main.removeCallbacks(remeasure)
+            main.postDelayed(remeasure, REMEASURE_MS)
+            return
+        }
+        val now = lastAnchor ?: return
+        if (was == null || now.x.isNaN() || was.x.isNaN() || now.offset < 0 || was.offset < 0) return
+        val dx = now.x - was.x
+        val dy = now.top - was.top
+        val layer = marks ?: return
+        if (now.offset == was.offset) {
+            if (dx != 0f || dy != 0f) layer.shift(dx, dy)
+        } else if (now.offset > was.offset && Math.abs(dy) < 0.5f && dx < 0 &&
+            SystemClock.uptimeMillis() - ownEditAt < OWN_EDIT_MS) {
+            layer.shift(0f, -(now.bottom - now.top))
+        }
+    }
+
+    /** Asks the field where each marked word is now, and moves (or hides, if scrolled away) its mark. */
+    @android.annotation.TargetApi(34)
+    private fun remeasure(info: CursorAnchorInfo) {
+        val ic = currentInputConnection ?: return
+        val layer = marks ?: return
+        if (layer.marks.isEmpty() || pending != null) return
+        val area = RectF()
+        val editor = info.editorBoundsInfo?.editorBounds
+        if (editor != null) { area.set(editor); Matrix(info.matrix).mapRect(area) }
+        else area.set(0f, 0f, resources.displayMetrics.widthPixels.toFloat(), resources.displayMetrics.heightPixels.toFloat())
+        ic.requestTextBoundsInfo(area, mainExecutor) { result ->
+            if (result.resultCode == android.view.inputmethod.TextBoundsInfoResult.CODE_UNSUPPORTED) {
+                noTextBounds = true
+                return@requestTextBoundsInfo
+            }
+            val tb = result.textBoundsInfo ?: return@requestTextBoundsInfo
+            val toField = Matrix()
+            if (layer.fieldMatrix?.invert(toField) != true) return@requestTextBoundsInfo
+            val toScreen = Matrix().also { tb.getMatrix(it) }
+            val r = RectF()
+            for (m in layer.marks) {
+                if (m.start < tb.startIndex || m.end > tb.endIndex) { m.visible = false; continue }
+                var box: RectF? = null
+                for (i in m.start until m.end) {
+                    tb.getCharacterBounds(i, r)
+                    if (r.isEmpty) continue
+                    if (box == null) box = RectF(r) else box.union(r)
+                }
+                if (box == null) { m.visible = false; continue }
+                toScreen.mapRect(box)
+                toField.mapRect(box)
+                // A fifth of the line up from its bottom is where fonts put the baseline; then a hair below.
+                val line = box.height()
+                box.bottom = box.bottom - line * 0.2f + line * 0.08f
+                m.local.set(box)
+                m.visible = true
+            }
+            layer.invalidate()
+        }
     }
 
     /**
@@ -1073,6 +1164,8 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         private const val MAX_TAPPED = 32
         /** A cursor move this soon after the keyboard changed the text is the keyboard's own. */
         private const val OWN_EDIT_MS = 400L
+        /** How long after the field last changed its marked words are looked for again. */
+        private const val REMEASURE_MS = 60L
         private const val CLIP_DONE = "passed"
         private const val NEXT_WORDS_FILE = "next_words_mine.txt"
         /** Dictionaries kept in memory: the one in use, and the next and the one before. */

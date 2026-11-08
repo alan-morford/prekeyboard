@@ -2,5 +2,4 @@
 <resources>
     <string name="app_name">Pre Keyboard</string>
     <string name="ime_name">Pre Keyboard</string>
-    <string name="subtype_en_us">English (US)</string>
 </resources>

@@ -43,7 +43,7 @@ TouchPad keyboard. It shares no code with either.
   buzz. Tap the underlined word to switch between what you typed and the correction (and,
   showing what you typed, hold it to add that to your dictionary); backspacing into it puts
   back what you typed first
-- **Vibrate on keys**, if you like: a light tap as each key goes down
+- **Vibrate on keys** and **Sound on keys**, if you like: a light tap or a click as each key goes down
 - **Double-space period**, and a period that brings its own space
 - **Emoji**: every emoji your phone can draw, by category, with your recent ones first
 - **Hold for more**: accents and extra symbols on a long press, each such key marked with a
@@ -95,7 +95,8 @@ TouchPad keyboard. It shares no code with either.
   key for its accents or extra symbols, slide to the one you want and let go. Keys that have
   them carry a small dot in the style's colour.
 - **Flick the space bar** left or right, with more than one language checked: the next
-  language, or the one before. Its name shows on the space bar for a moment.
+  language, or the one before. Its name lights up on the space bar, then fades to a faint
+  grey that stays, so you can always tell which language you're in.
 - **Hold the space bar** and slide: the cursor follows your finger, left and right a character
   at a time, up and down a line at a time. With shift on, it selects as it goes.
 - **Hold backspace** and it repeats, then starts taking whole words. The suggestion bar waits
@@ -122,8 +123,10 @@ TouchPad keyboard. It shares no code with either.
 **Choose languages** in the app opens a list to check: English (US), English (UK), English
 (Canada), English (Australia), Français, Deutsch, Español and Italiano. US English is checked
 at first. With more than one checked, a quick flick left or right on the space bar goes to the
-next one or back, in the list's order, and the language's name shows on the space bar as it
-changes. Holding the space bar still moves the cursor.
+next one or back, in the list's order. The language's name lights up on the space bar as it
+changes, then stays there faintly, a shade off the key's black. Holding the space bar still
+moves the cursor. In Android's own list of keyboards it is simply **Pre Keyboard**: the
+languages are its own.
 
 ![The French keys, AZERTY, just after a flick to French](docs/french.png)
 
@@ -165,7 +168,8 @@ the keyboard on screen.
   and `theynare` both become `they are`. Backspace straight after a correction puts back what
   you typed, without adding it to your dictionary. A corrected word gets an orange dashed
   underline and the phone buzzes lightly, so you can see what changed; the line stays while
-  the word does, until you leave the field. While it's there:
+  the word does, until you leave the field, and moves with the word as the text scrolls or
+  wraps onto new lines. While it's there:
   - **Tap the word** to switch it back to what you typed; tap again for the correction. The
     cursor goes back to where you were typing.
   - **Hold the word** while it shows what you typed (tap it back first), as you would to select
@@ -194,6 +198,8 @@ the keyboard on screen.
 - **Hold for more** (off by default): hold a key for its accents and extra symbols; keys that
   have them show a small dot. Holding the orange key turns it on or off too.
 - **Vibrate on keys** (off by default): a light tap of the vibrator as each key goes down.
+- **Sound on keys** (off by default): a click as each key goes down, quiet while the phone is
+  on silent or vibrate.
 - **Edit dictionary**: the words you added (by holding them in the bar, or by tapping them
   as typed there), each with **Remove**, and a field to add one. Autocorrect leaves these words
   alone and swiping can spell them; a word you remove is corrected again. With languages
@@ -214,7 +220,9 @@ quick swipes over the 400 commonest words (`SwipeBenchTest`).
 The orange underline is drawn the way LunaKeyboard (in
 [Lunacy](https://github.com/webOSArchive/Lunacy)) draws webOS's dotted line: a keyboard can't
 draw inside another app's field, so its transparent window reaches up over the app, and the
-corrected word is made the composing text for a moment so the field says where it is.
+corrected word is made the composing text for a moment so the field says where it is. From
+Android 14 the field is asked again where each underlined word is whenever its text moves
+(`requestTextBoundsInfo`); before that, the lines move as the cursor shows the text has.
 
 ## Installing
 

@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- No subtypes: Android would list the keyboard under the first one's name ("English (US)")
+     with "Pre Keyboard" small below it. The languages are the keyboard's own, chosen in its app
+     and changed with a flick on the space bar, so it is listed simply as Pre Keyboard. -->
 <input-method xmlns:android="http://schemas.android.com/apk/res/android"
-    android:settingsActivity="io.github.alan_morford.prekeyboard.SetupActivity">
-    <subtype android:label="@string/subtype_en_us"
-        android:imeSubtypeLocale="en_US"
-        android:imeSubtypeMode="keyboard" />
-</input-method>
+    android:settingsActivity="io.github.alan_morford.prekeyboard.SetupActivity" />
