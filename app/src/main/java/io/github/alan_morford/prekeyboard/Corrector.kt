@@ -29,9 +29,12 @@ class Corrector(lines: Sequence<String>, val lang: Language = Language.EN_US) {
     /** Keyed by lower case; the value keeps the word's own case ("I", "London", "don't"). */
     private val words = HashMap<String, Entry>(131072)
 
-    /** Words the owner has added or picked as typed over a correction: never corrected again. */
+    /**
+     * Words the owner has added or picked as typed over a correction: never corrected again.
+     * Keyed by lower case; the value is the owner's spelling, capitals and all ("webOS").
+     */
     // Read by the suggestion thread while the keyboard may add to it: synchronised.
-    private val learned: MutableSet<String> = java.util.Collections.synchronizedSet(HashSet<String>())
+    private val learned: MutableMap<String, String> = java.util.Collections.synchronizedMap(HashMap<String, String>())
 
     init {
         for (line in lines) {
@@ -115,7 +118,7 @@ class Corrector(lines: Sequence<String>, val lang: Language = Language.EN_US) {
     /** The dictionary's entry for a lower-case [key], unless the owner took it out. */
     private fun entry(key: String): Entry? = words[key]?.takeIf { key !in removed }
 
-    fun remove(word: String) { val k = word.lowercase(); removed += k; learned -= k }
+    fun remove(word: String) { val k = word.lowercase(); removed += k; learned.remove(k) }
     fun removeAll(ws: Collection<String>) { for (w in ws) remove(w) }
     /** Put back in, from the dictionary screen. */
     fun restore(word: String) { removed -= word.lowercase() }
@@ -123,14 +126,18 @@ class Corrector(lines: Sequence<String>, val lang: Language = Language.EN_US) {
     /** The dictionary's own spelling and score for [word], taken out or not; null if it hasn't it. */
     fun listed(word: String): Pair<String, Int>? = words[word.lowercase()]?.let { it.word to it.score }
 
-    fun learn(word: String) { learned += word.lowercase() }
+    /** [word] learned as spelt: one with capitals ("webOS") is what its lower case becomes. */
+    fun learn(word: String) { learned[word.lowercase()] = word }
     fun learnAll(ws: Collection<String>) { for (w in ws) learn(w) }
     /** The owner took [word] out of their dictionary: corrected again, unless the dictionary has it. */
-    fun unlearn(word: String) { learned -= word.lowercase() }
+    fun unlearn(word: String) { learned.remove(word.lowercase()) }
+
+    /** The owner's spelling of the word [lower] when it has capitals ("webOS"); null otherwise. */
+    private fun cased(lower: String): String? = learned[lower]?.takeIf { it != lower }
 
     fun isKnown(word: String): Boolean {
-        lang.elided(word)?.let { return isKnown(it.second) || word.lowercase() in learned }
-        return word.lowercase().let { entry(it) != null || it in learned }
+        lang.elided(word)?.let { return isKnown(it.second) || word.lowercase() in learned.keys }
+        return word.lowercase().let { entry(it) != null || it in learned.keys }
     }
 
     /**
@@ -140,7 +147,8 @@ class Corrector(lines: Sequence<String>, val lang: Language = Language.EN_US) {
     fun spelling(word: String): String? {
         lang.elided(word)?.let { return spelling(it.second) }
         val lower = word.lowercase()
-        return entry(lower)?.word ?: lower.takeIf { it in learned }
+        cased(lower)?.let { return it }
+        return entry(lower)?.word ?: learned[lower]
     }
 
     /**
@@ -151,7 +159,12 @@ class Corrector(lines: Sequence<String>, val lang: Language = Language.EN_US) {
         if (typed.isEmpty() || typed.length > MAX_LENGTH) return null
         if (!typed.all { it.isLetter() || it == '\'' } || !typed[0].isLetter()) return null
         val lower = typed.lowercase()
-        if (lower in learned) return null
+        // The owner's own word: only its capitals can be wrong ("webos" for "webOS").
+        cased(lower)?.let { own ->
+            if (typed != lower && typed != lower.replaceFirstChar { it.uppercaseChar() }) return null
+            return casedLike(typed, own).takeIf { it != typed }
+        }
+        if (lower in learned.keys) return null
         // A word typed all in capitals, beyond one letter, is meant that way (NASA, OK).
         if (typed.length > 1 && typed.all { it.isUpperCase() || it == '\'' }) return null
         // "l'hommme": the word after the apostrophe is the one to correct.
@@ -213,7 +226,7 @@ class Corrector(lines: Sequence<String>, val lang: Language = Language.EN_US) {
         val fix = correct(typed, context)
         when {
             fix != null -> out += fix
-            lower in learned -> out += typed
+            lower in learned.keys -> out += typed
             else -> entry(lower)?.let { out += casedLike(typed, it.word) }
         }
         // A word that is also a contraction without its apostrophe ("ill", "its"): the
@@ -473,6 +486,14 @@ class Corrector(lines: Sequence<String>, val lang: Language = Language.EN_US) {
         private const val MISSED_APOSTROPHE = 0.3f
         /** Two letters a language writes as one: "ss" as "ß", "oe" as "œ", "ae" as "æ". */
         private val JOINED = listOf("ss" to 'ß', "oe" to 'œ', "ae" to 'æ')
+
+        /**
+         * How a word the keyboard learns as it is used is kept: with its capitals when it has
+         * one past the first letter ("webOS", "iPhone", "NASA"), otherwise in lower case, since a
+         * lone first capital is most often just the start of a sentence.
+         */
+        fun ownSpelling(word: String): String =
+            if (word.drop(1).any { it.isUpperCase() }) word else word.lowercase()
 
         /** [word] with the capitals of [typed]: "Teh" -> "The". A word's own capitals stay. */
         fun casedLike(typed: String, word: String): String =

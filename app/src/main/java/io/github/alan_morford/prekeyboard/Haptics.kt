@@ -23,8 +23,11 @@ object Haptics {
         v.takeIf { it.hasVibrator() }
     }.getOrNull().also { vibrator = it }
 
-    /** A key went down. */
-    fun key(context: Context) = buzz(context, KEY_MS, KEY_STRENGTH)
+    /** A key went down; [level] is the owner's strength, 1 to [LEVELS]. */
+    fun key(context: Context, level: Int) {
+        val i = level.coerceIn(1, LEVELS) - 1
+        buzz(context, KEY_MS[i], KEY_STRENGTH[i])
+    }
 
     /** Autocorrect changed the word just finished. */
     fun corrected(context: Context) = buzz(context, CORRECTED_MS, CORRECTED_STRENGTH)
@@ -40,8 +43,11 @@ object Haptics {
     }
 
     // Strengths out of 255, where the motor can be told one.
-    private const val KEY_MS = 12L
-    private const val KEY_STRENGTH = 70
+    // A key's tap at each level: 1 is the light one it always was; each after it a step firmer,
+    // and a little longer, for a motor (or an Android before 8) that can't be told a strength.
+    const val LEVELS = 3
+    private val KEY_MS = longArrayOf(12L, 15L, 18L)
+    private val KEY_STRENGTH = intArrayOf(70, 130, 200)
     private const val CORRECTED_MS = 28L
     private const val CORRECTED_STRENGTH = 110
 }

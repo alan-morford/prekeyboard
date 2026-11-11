@@ -96,8 +96,18 @@ class SetupActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
             "symbols (é, ñ, curly quotes, £, ½…). Keys that have them show a small dot. Hold the " +
             "orange key to switch it on or off from the keyboard.",
             { Settings.read(this).holdForMore }) { v -> Settings.update(this) { it.copy(holdForMore = v) } })
-        column.addView(toggle("Vibrate on keys", "A light tap of the vibrator as each key goes down.",
+        column.addView(toggle("Vibrate on keys", "A tap of the vibrator as each key goes down, as strong as chosen below.",
             { Settings.read(this).vibrate }) { v -> Settings.update(this) { it.copy(vibrate = v) } })
+        // Its strength, felt as it is chosen; greyed out while vibration is off.
+        val strength = choices((1..Haptics.LEVELS).toList(), { listOf("Light", "Firmer", "Strong")[it - 1] },
+            { Settings.read(this).vibrateLevel }) { v ->
+            Settings.update(this) { it.copy(vibrateLevel = v) }
+            Haptics.key(this, v)
+        }
+        column.addView(strength)
+        val dim = { strength.alpha = if (Settings.read(this).vibrate) 1f else 0.45f }
+        refreshers += dim
+        dim()
         column.addView(toggle("Sound on keys", "A click as each key goes down. Quiet while the phone " +
             "is on silent or vibrate.",
             { Settings.read(this).sound }) { v -> Settings.update(this) { it.copy(sound = v) } })

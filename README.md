@@ -36,7 +36,8 @@ TouchPad keyboard. It shares no code with either.
 - **Next-word suggestions**: before you start a word, the bar offers the three likeliest next
   words (`I` → `don't`, `think`, `know`), learning the ones you use
 - **Your own words**: hold a word in the bar to add it to the dictionary, or hold one it
-  already knows to delete it (`yest`, `om`); see, add, remove or put back words in the app
+  already knows to delete it (`yest`, `om`); see, add, remove or put back words in the app.
+  Words keep their capitals: save `webOS` and typing `webos` becomes `webOS`
 - **GIFs and stickers** from [KLIPY](https://klipy.com), next to the emoji: trending or
   searched for, moving as you scroll, sent straight into the app
 - **Speech input**: hold the period and talk
@@ -50,7 +51,7 @@ TouchPad keyboard. It shares no code with either.
   buzz. Tap the underlined word to switch between what you typed and the correction (and,
   showing what you typed, hold it to add that to your dictionary); backspacing into it puts
   back what you typed first
-- **Vibrate on keys** and **Sound on keys**, if you like: a light tap or a click as each key goes down
+- **Vibrate on keys** (light, firmer or strong) and **Sound on keys**, if you like: a tap or a click as each key goes down
 - **Double-space period**, and a period that brings its own space
 - **Emoji**: every emoji your phone can draw, by category, with your recent ones first
 - **Hold for more**: accents and extra symbols on a long press, each such key marked with a

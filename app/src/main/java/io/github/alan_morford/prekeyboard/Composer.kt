@@ -246,7 +246,7 @@ class Composer(private val field: Field, private val clock: () -> Long) {
         markSpace()
         // A space after a picked word counts as the first of a double-tapped space.
         lastSpaceAt = clock()
-        if (learn) { corrector?.learn(word); onLearned(word) }
+        if (learn) { val own = Corrector.ownSpelling(word); corrector?.learn(own); onLearned(own) }
     }
 
     /**

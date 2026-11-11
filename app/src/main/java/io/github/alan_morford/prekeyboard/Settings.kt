@@ -20,6 +20,8 @@ data class Settings(
     val emojiSuggestions: Boolean = false,
     /** A light vibration as each key goes down. */
     val vibrate: Boolean = false,
+    /** How strong that vibration is: 1 (the light tap it always was), 2 or 3. */
+    val vibrateLevel: Int = 1,
     /** A click as each key goes down. */
     val sound: Boolean = false,
     /** The languages checked in the Languages screen, in its order: a flick on the space bar goes through them. */
@@ -53,6 +55,7 @@ data class Settings(
                 holdForMore = p.getBoolean("holdForMore", d.holdForMore),
                 emojiSuggestions = p.getBoolean("emojiSuggestions", d.emojiSuggestions),
                 vibrate = p.getBoolean("vibrate", d.vibrate),
+                vibrateLevel = p.getInt("vibrateLevel", d.vibrateLevel).coerceIn(1, Haptics.LEVELS),
                 sound = p.getBoolean("sound", d.sound),
             ).let { s ->
                 // The screen's order, whatever order they were checked in; never none.
@@ -69,7 +72,7 @@ data class Settings(
                 .putBoolean("autocorrect", s.autocorrect).putBoolean("doubleSpacePeriod", s.doubleSpacePeriod)
                 .putBoolean("suggestions", s.suggestions).putBoolean("swipe", s.swipe)
                 .putBoolean("holdForMore", s.holdForMore).putBoolean("emojiSuggestions", s.emojiSuggestions)
-                .putBoolean("vibrate", s.vibrate).putBoolean("sound", s.sound)
+                .putBoolean("vibrate", s.vibrate).putInt("vibrateLevel", s.vibrateLevel).putBoolean("sound", s.sound)
                 .putString("languages", s.languages.joinToString(",") { it.id })
                 .putString("language", s.language.id)
                 .apply()
@@ -86,14 +89,21 @@ data class Settings(
 
         fun learned(context: Context, lang: Language): Set<String> =
             prefs(context).getStringSet(learnedKey(lang), emptySet()) ?: emptySet()
-        /** [word] added: no longer among the deleted, if it was. */
+        /** The owner's words but [word], however it is capitalised. */
+        private fun learnedBut(context: Context, lang: Language, word: String): Set<String> =
+            learned(context, lang).filterTo(HashSet()) { !it.equals(word, ignoreCase = true) }
+
+        /**
+         * [word] added, spelt as given ("webOS" keeps its capitals, in place of any other
+         * spelling of it): no longer among the deleted, if it was.
+         */
         fun addLearned(context: Context, lang: Language, word: String) =
             prefs(context).edit()
-                .putStringSet(learnedKey(lang), learned(context, lang) + word.lowercase())
+                .putStringSet(learnedKey(lang), learnedBut(context, lang, word) + word)
                 .putStringSet(removedKey(lang), removed(context, lang) - word.lowercase())
                 .apply()
         fun removeLearned(context: Context, lang: Language, word: String) =
-            prefs(context).edit().putStringSet(learnedKey(lang), learned(context, lang) - word.lowercase()).apply()
+            prefs(context).edit().putStringSet(learnedKey(lang), learnedBut(context, lang, word)).apply()
 
         /** Where [lang]'s family keeps the dictionary's words the owner deleted: "removed", "removed_fr". */
         fun removedKey(lang: Language) = if (lang.english) REMOVED else "${REMOVED}_${lang.family}"
@@ -107,7 +117,7 @@ data class Settings(
             val w = word.lowercase()
             prefs(context).edit()
                 .putStringSet(removedKey(lang), removed(context, lang) + w)
-                .putStringSet(learnedKey(lang), learned(context, lang) - w)
+                .putStringSet(learnedKey(lang), learnedBut(context, lang, w))
                 .apply()
         }
         fun restoreRemoved(context: Context, lang: Language, word: String) =

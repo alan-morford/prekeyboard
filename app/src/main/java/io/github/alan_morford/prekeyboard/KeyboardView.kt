@@ -1148,7 +1148,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
 
     /** A key went down: a light tap of the vibrator, and a click, when the owner has asked for them. */
     private fun keyFeedback() {
-        if (settings.vibrate) Haptics.key(context)
+        if (settings.vibrate) Haptics.key(context, settings.vibrateLevel)
         if (settings.sound) Sounds.key(context)
     }
 

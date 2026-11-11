@@ -981,7 +981,10 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
     /** A word held in the bar can be added when it is a word (letters) the dictionary lacks. */
     override fun canAdd(word: String): Boolean {
         val c = composer.corrector ?: return false
-        return word.isNotEmpty() && word.all { it.isLetter() || it == '\'' } && word[0].isLetter() && !c.isKnown(word)
+        if (word.isEmpty() || !word.all { it.isLetter() || it == '\'' } || !word[0].isLetter()) return false
+        // Known, but kept without the capitals this one has ("webos" for "webOS"): adding keeps them.
+        val own = Corrector.ownSpelling(word)
+        return !c.isKnown(word) || (own != word.lowercase() && c.spelling(word) != own)
     }
 
     override fun onAddWord(word: String) {
@@ -999,9 +1002,10 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
                 }
             }
         }
-        composer.corrector?.learn(word)
-        Settings.addLearned(this, language, word)
-        decoder?.add(word.lowercase(), LEARNED_SCORE)
+        val own = Corrector.ownSpelling(word)
+        composer.corrector?.learn(own)
+        Settings.addLearned(this, language, own)
+        decoder?.add(own, LEARNED_SCORE)
         refreshBar()
     }
 
@@ -1016,7 +1020,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         val w = word.lowercase()
         dictionary?.let { d ->
             d.corrector.remove(w); d.decoder.forget(w)
-            d.removed = d.removed + w; d.learned = d.learned - w
+            d.removed = d.removed + w; d.learned = d.learned.filterTo(HashSet()) { !it.equals(w, ignoreCase = true) }
         }
         Settings.addRemoved(this, language, w)
         swipeGuesses = swipeGuesses.filter { !it.equals(word, ignoreCase = true) }

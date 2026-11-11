@@ -100,6 +100,26 @@ class CorrectorTest {
         assertNull(local.correct("teh"))
     }
 
+    @Test fun learnedWordsKeepTheirCapitals() {
+        val local = File("src/main/assets/dictionary.txt").bufferedReader().useLines { Corrector(it) }
+        local.learn("webOS")
+        assertEquals("webOS", local.correct("webos"))
+        assertEquals("WebOS", local.correct("Webos"))      // a sentence's start
+        assertNull(local.correct("webOS"))
+        assertNull(local.correct("WEBOS"))
+        assertEquals("webOS", local.suggestions("webos").first())
+        assertEquals("webOS", local.spelling("webos"))
+        local.learn("yeet")
+        assertNull(local.correct("yeet"))
+        assertNull(local.correct("Yeet"))
+        // Learned over the dictionary's own spelling.
+        local.learn("iPad")
+        assertEquals("iPad", local.correct("ipad"))
+        assertEquals("webOS", Corrector.ownSpelling("webOS"))
+        assertEquals("yeet", Corrector.ownSpelling("Yeet"))
+        assertEquals("NASA", Corrector.ownSpelling("NASA"))
+    }
+
     @Test fun suggestions() {
         assertEquals("the", c.suggestions("teh").first())       // what space would make of it
         assertEquals("hello", c.suggestions("hello").first())   // a word is its own best

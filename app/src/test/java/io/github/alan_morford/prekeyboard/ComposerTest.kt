@@ -196,9 +196,16 @@ class ComposerTest {
         // The word as typed, picked over its correction, is learned and kept from then on.
         text.setLength(0); composer.reset()
         type("Zorp"); composer.pick("Zorp", learn = true)
-        assertEquals(listOf("Zorp"), learned)
+        assertEquals(listOf("zorp"), learned)       // a lone first capital: a sentence's start
         type("zorp ")
         assertEquals("Zorp zorp ", text.toString())
+
+        // A word with capitals past its first letter keeps them, and its lower case gets them.
+        text.setLength(0); composer.reset(); learned.clear()
+        type("webOS"); composer.pick("webOS", learn = true)
+        assertEquals(listOf("webOS"), learned)
+        type("webos ")
+        assertEquals("webOS webOS ", text.toString())
     }
 
     @Test fun currentWordOnlyAtAWordsEnd() {
