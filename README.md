@@ -14,8 +14,9 @@ everything white. Hold the globe on the Sym page to switch between them at any t
 It types in **English** (US, UK, Canada and Australia), **French**, **German**, **Spanish**,
 **Italian**, **Dutch**, **Portuguese**, **Czech**, **Polish**, **Hungarian**, **Danish**,
 **Norwegian**, **Swedish**, **Finnish**, **Russian**, **Ukrainian**, **Arabic** and **Hebrew**,
-each with its own keys, dictionary and suggestions, and in **Simplified Chinese** by pinyin. Check the ones you use in the app, then flick the space bar left or right to
-switch between them; see [Languages](#languages).
+each with its own keys, dictionary and suggestions, and in **Simplified Chinese** by pinyin.
+Check the ones you use in the app, then flick the space bar left or right to switch between
+them; see [Languages](#languages).
 
 It began as the "Pre (Orange)" and "Pre (White)" layouts of
 [LuneOS's keyboard](https://github.com/webOS-ports/webos-keyboard), and the idea of bringing a
@@ -27,15 +28,18 @@ TouchPad keyboard. It shares no code with either.
 - The Pre's layout key for key: four rows in matching columns, the orange key, Sym, and every
   key's alternate printed where the Pre printed it
 - Two styles, **Orange** and **White**: hold the globe on the Sym page to switch on the fly
-- **Languages**: 21 of them, each with its own keys, words and suggestions, Simplified
-  Chinese by pinyin among them; check the ones you use and flick the space bar left or right
-  to change
+- **Languages**: 19 of them (English in four spellings), each with its own keys, words and
+  suggestions, Simplified Chinese by pinyin among them; check the ones you use and flick the
+  space bar left or right to change
 - **Swipe to type**, forgiving of quick, rough swipes, with the word you would get shown as
-  you swipe, and the next word predicted after
+  you swipe; after, the swipe's next guess waits on the left to swap in, and the next word
+  is predicted beside it
+- **Number pad** for PINs and other fields that only take numbers
+- **Number row** above the letters, if you like, and **lowercase letters** while shift is off
 - **Suggestion bar**: three words above the keys, the likeliest in the middle in orange, and
   if you like, an emoji for the word on the right (`pizza` → 🍕)
-- **Next-word suggestions**: before you start a word, the bar offers the three likeliest next
-  words (`I` → `don't`, `think`, `know`), learning the ones you use
+- **Next-word suggestions**: before you start a word (and after a swipe), the bar offers the
+  likeliest next words (`I` → `don't`, `think`, `know`), learning the ones you use
 - **Your own words**: hold a word in the bar to add it to the dictionary, or hold one it
   already knows to delete it (`yest`, `om`); see, add, remove or put back words in the app.
   Words keep their capitals: save `webOS` and typing `webos` becomes `webOS`
@@ -52,7 +56,8 @@ TouchPad keyboard. It shares no code with either.
   buzz. Tap the underlined word to switch between what you typed and the correction (and,
   showing what you typed, hold it to add that to your dictionary); backspacing into it puts
   back what you typed first
-- **Vibrate on keys** (light, firmer or strong) and **Sound on keys**, if you like: a tap or a click as each key goes down
+- **Vibrate on keys** (light, firmer or strong) and **Sound on keys**, if you like: a tap or a
+  click as each key goes down
 - **Double-space period**, and punctuation that brings its own space
 - **Emoji**: every emoji your phone can draw, by category, with your recent ones first
 - **Hold for more**: accents and extra symbols on a long press, each such key marked with a
@@ -134,10 +139,12 @@ TouchPad keyboard. It shares no code with either.
   became speech input).
 - **Swipe** (when switched on): slide across the letters and lift at the end of the word. The
   word goes in with a space either side, so you can swipe or tap the next word straight away,
-  and a period lands on the word. While you swipe, the bar shows the word you would
-  get if you lifted now, in orange; after, it predicts the next word, as after a typed word
-  and a space. Backspace straight after a swipe takes the whole word and its space; tap a
-  swiped word in the text for other words it might have been. Taps still type letters as usual, and the word before a swipe is corrected
+  and a period lands on the word. While you swipe, the bar shows the word you would get if
+  you lifted now, in orange. After, the bar's left place holds the swipe's next guess (swiped
+  `choose` and got `Course`? `Choose` is on the left): tap it to swap it in, and the word it
+  replaced takes its place, in case. The middle and right show the likeliest next words; tap
+  one to type it after the swiped word. Backspace straight after a swipe takes the whole word
+  and its space. Taps still type letters as usual, and the word before a swipe is corrected
   as a space would correct it (a lone `i` becomes `I`). Swiping works in search boxes too.
   Quick swipes needn't be careful: corners cut short, a letter only passed near, or a start
   and finish a little off still find the word, and when two words fit the path about equally
@@ -148,12 +155,11 @@ TouchPad keyboard. It shares no code with either.
 **Choose languages** in the app opens a list to check: English (US), English (UK), English
 (Canada), English (Australia), Français, Deutsch, Español, Italiano, Nederlands, 中文（简体）,
 Čeština, Dansk, Suomi, Magyar, Norsk (bokmål), Polski, Português (Brasil), Svenska, Русский,
-Українська, العربية and עברית. US English is checked
-at first. With more than one checked, a quick flick left or right on the space bar goes to the
-next one or back, in the list's order. The language's name lights up on the space bar as it
-changes, then stays there faintly, a shade off the key's black. Holding the space bar still
-moves the cursor. In Android's own list of keyboards it is simply **Pre Keyboard**: the
-languages are its own.
+Українська, العربية and עברית. US English is checked at first. With more than one checked, a
+quick flick left or right on the space bar goes to the next one or back, in the list's
+order. The language's name lights up on the space bar as it changes, then stays there
+faintly, a shade off the key's black. Holding the space bar still moves the cursor. In
+Android's own list of keyboards it is simply **Pre Keyboard**: the languages are its own.
 
 ![The French keys, AZERTY, just after a flick to French](docs/french.png)
 
@@ -166,10 +172,11 @@ languages are its own.
   ЙЦУКЕН for Russian and Ukrainian, and the standard Arabic and Hebrew keyboards. A row
   with more letters than the Pre's shares its width among them; backspace, Return, the
   orange key and the bottom row stay as they are. Keys past the Pre's own print no
-  alternate. Arabic's comma key types `،`, and `?` and `;` come out as `؟` and `؛`. With Hold for more on, a language's own accents come first on each
-  key (`é è ê ë` on E in French, `ß` first on S in German, `ñ` on N in Spanish).
-- **Words**: each language has its own dictionary, next-word suggestions and emoji
-  suggestions (`chat` → 🐈, `Bier` → 🍺). The Englishes differ only in spelling (`colour`,
+  alternate. Arabic's comma key types `،`, and `?` and `;` come out as `؟` and `؛`. With
+  Hold for more on, a language's own accents come first on each key (`é è ê ë` on E in
+  French, `ß` first on S in German, `ñ` on N in Spanish).
+- **Words**: each language but Chinese has its own dictionary, next-word suggestions and
+  emoji suggestions (`chat` → 🐈, `Bier` → 🍺). The Englishes differ only in spelling (`colour`,
   `organise`) and share everything else.
 - **Accents**: autocorrect puts them in, however many a word has: `etre` → `être`, `deja` →
   `déjà`, `strasse` → `Straße`, `coeur` → `cœur`, `manana` → `mañana`, `perche` → `perché`.
@@ -207,7 +214,8 @@ the keyboard on screen.
 - **Height**: Small, Medium or Large rows.
 - **Number row**: the digits in a row of their own above the letters, always there. The Sym
   page then keeps its digits in that same top row, with a row of arrows, ticks and signs
-  (`← → ↑ ↓ ↔ ✓ ✗ ★ ♥ ♪`) under them, so the pages are the same height and the digits don't move.
+  (`← → ↑ ↓ ↔ ✓ ✗ ★ ♥ ♪`) under them, so the pages are the same height and the digits don't
+  move.
   - **Hide digits on the letters**: with the number row on, the digits printed on E R T,
     D F G, X C V and @ are left off (and the orange key types nothing else on them).
 - **Lowercase letters**: the keys show lowercase while shift is off, capitals while it's on.
@@ -241,7 +249,8 @@ the keyboard on screen.
   Hold a word the dictionary already has for **Delete from dictionary?**: Yes and it is never
   offered or corrected to again, and typing it gets it corrected. With shift on, the words
   show (and go in) with a capital; with caps lock, in capitals.
-  Before you start a word, the bar offers the three likeliest next words, from everyday
+  Before you start a word, the bar offers the three likeliest next words (after a swipe, two,
+  beside the swipe's next guess), from everyday
   English and from what you usually type after the word before (kept on the phone; not in
   incognito fields). Tap a word already in the text and the bar offers the nearest other
   words, the likeliest in the middle; tap one to swap it in, and the word it replaced is

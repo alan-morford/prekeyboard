@@ -967,9 +967,16 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         }
         val sw = composer.swiped
         val emojiOn = v.settings.emojiSuggestions
-        // After a swipe, what may come next, as after a word and a space. A misread swipe is
-        // undone by backspace (the whole word) or put right by tapping the word.
-        if (sw != null) { show(predict() ?: emptyList(), verbatim = false, emoji = false); return }
+        // After a swipe: on the left, the swipe's likeliest other word (Choose, when it took
+        // Course), which swaps in for it; in the middle and on the right, what may come next.
+        if (sw != null) {
+            val other = swipeGuesses.firstOrNull { !it.equals(sw, ignoreCase = true) } ?: ""
+            val next = predict()
+            // predict() puts the likeliest in the middle and the next one on the left.
+            show(listOf(other, next?.getOrNull(1) ?: "", next?.getOrNull(0) ?: ""), verbatim = false, emoji = false)
+            swapOffered = other.isNotEmpty()
+            return
+        }
         val typed = composer.currentWord()
         val typedAfter = composer.wordContext()
         val c = composer.corrector
@@ -1034,7 +1041,11 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         tapped = false
     }
 
+    /** The bar's left place holds the swipe's other word, to swap in for the swiped one. */
+    private var swapOffered = false
+
     private fun show(words: List<String>, verbatim: Boolean, emoji: Boolean) {
+        swapOffered = false
         bar = List(3) { words.getOrElse(it) { "" } }
         barVerbatim = verbatim
         barEmoji = emoji
@@ -1082,8 +1093,9 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         val at = barWord
         if (at != null) { replaceTapped(at, word); return }
         ownEdit()
-        // After a swipe the bar offers the next word: it goes after the swiped one, not in its place.
-        if (composer.swiped != null) composer.forget()
+        // After a swipe, the left place swaps the swiped word; the others are next words, and
+        // go after it.
+        if (composer.swiped != null && !(i == 0 && swapOffered)) composer.forget()
         val learn = i == 0 && barVerbatim && composer.corrector?.isKnown(word) == false
         composer.pick(word, learn)
         if (i == 2 && barEmoji) Settings.addRecentEmoji(this, word)
