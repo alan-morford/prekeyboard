@@ -4,11 +4,12 @@ package io.github.alan_morford.prekeyboard
  * What typing does to the text: autocorrect when a word is finished, undoing a correction
  * with the very next backspace, and a double-tapped space becoming ". ".
  *
- * A period and a swiped word each bring the space after them (an "auto space"). It stays the
- * keyboard's while it is the last thing typed: a space typed on top of it is absorbed rather
- * than doubled, and sentence punctuation goes against the word, so a period after a swiped
- * word lands on the word and "..." stays together. A backspace after a period takes only its
- * space; after a swipe it takes the word and its spaces.
+ * Sentence punctuation (. , ; : ! ?) and a swiped word each bring the space after them (an
+ * "auto space"). It stays the keyboard's while it is the last thing typed: a space typed on
+ * top of it is absorbed rather than doubled, and more sentence punctuation goes against the
+ * word, so a period after a swiped word lands on the word and "...", "?!" stay together. A
+ * backspace after punctuation takes only its space; after a swipe it takes the word and its
+ * spaces.
  *
  * A space typed after a word (or the one a picked word brings) is the owner's, but sentence
  * punctuation typed straight after it still goes against the word, and the space moves to
@@ -109,9 +110,9 @@ class Composer(private val field: Field, private val clock: () -> Long) {
                 if (fix != null) { field.delete(fix.typed.length); field.commit(fix.fixed + text); last = fix; fixed = fix }
                 else field.commit(text)
             } else field.commit(text)
-            if (text == "." && rules.prose && periodWantsSpace()) {
+            if (text.length == 1 && text[0] in SENTENCE && rules.prose && wantsSpace(text[0])) {
                 field.commit(" ")
-                autoTail = ". "
+                autoTail = "$text "
                 after++
             } else if (snap && typedSpace) {
                 // The owner's space moves to after the punctuation, where it belongs.
@@ -126,17 +127,19 @@ class Composer(private val field: Field, private val clock: () -> Long) {
     }
 
     /**
-     * Not after a digit (3.14), after a space or at the start of the text (.net), or in an
-     * address or a link (name@mail.com, www.site, a/b.c); and not when a space already
+     * Whether the punctuation [p] just typed brings a space. Not after a digit (3.14, 1,000,
+     * 10:30), after a space or at the start of the text (.net, :-) typed on its own), or in an
+     * address or a link (name@mail.com, www.site, a/b.c, https:); and not when a space already
      * follows the cursor.
      */
-    private fun periodWantsSpace(): Boolean {
+    private fun wantsSpace(p: Char): Boolean {
         val b = field.before(MAX_WORD + 2).toString()
         if (b.length < 2) return false
         val prev = b[b.length - 2]
         if (prev.isWhitespace() || prev.isDigit()) return false
         val token = b.dropLast(1).substringAfterLast(' ').substringAfterLast('\n')
         if ('@' in token || '/' in token || token.startsWith("www", ignoreCase = true)) return false
+        if (p == ':' && token.lowercase() in SCHEMES) return false
         val next = field.after(1)
         return next.isEmpty() || !next[0].isWhitespace()
     }
@@ -302,8 +305,8 @@ class Composer(private val field: Field, private val clock: () -> Long) {
         if (t.isEmpty()) return if (before.length < MAX_WORD) NextWords.START else null
         if (before.length > t.length && '\n' in before.substring(t.length)) return NextWords.START
         val last = t.last()
-        if (last in ".!?") return NextWords.START
-        if (last == ',') return NextWords.COMMA
+        if (last in ".!?؟") return NextWords.START
+        if (last == ',' || last == '،') return NextWords.COMMA
         if (!last.isLetter() && last != '\'') return null
         var i = t.length
         while (i > 0 && (t[i - 1].isLetter() || t[i - 1] == '\'')) i--
@@ -346,9 +349,11 @@ class Composer(private val field: Field, private val clock: () -> Long) {
         private const val MAX_WORD = 32
         private const val OPENERS = "(\"'[{“‘¿¡"
         private const val CLOSERS = ")\"']}”’"
-        private const val SEPARATORS = " .,!?;:)]}\"…"
-        /** Punctuation that goes against the word before it, never after a space. */
-        private const val SENTENCE = ".,?!:;"
+        private const val SEPARATORS = " .,!?;:)]}\"…،؟؛"
+        /** Punctuation that goes against the word before it, never after a space (Arabic's too). */
+        private const val SENTENCE = ".,?!:;،؟؛"
+        /** Words a colon makes the start of a link or address, not the end of a phrase. */
+        private val SCHEMES = setOf("http", "https", "ftp", "mailto", "tel", "sms", "file", "content", "geo", "intent")
 
         fun isSeparator(text: String) = text.length == 1 && text[0] in SEPARATORS
     }

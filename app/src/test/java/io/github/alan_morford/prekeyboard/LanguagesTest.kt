@@ -14,6 +14,7 @@ class LanguagesTest {
         val c = HashMap<String, Corrector>()
         @BeforeClass @JvmStatic fun load() {
             for (lang in Language.ALL) {
+                if (lang.pinyin) continue
                 val corr = Corrector(lang.dictionaries.asSequence().flatMap { File("src/main/assets/$it").readLines() }, lang)
                 val nw = File("src/main/assets/" + lang.asset(Language.NEXT_WORDS)).bufferedReader()
                     .useLines { NextWords(it) }
@@ -27,10 +28,13 @@ class LanguagesTest {
     private fun keeps(lang: String, typed: String) = assertNull("$lang $typed", c[lang]!!.correct(typed))
 
     @Test fun everyLanguageHasItsFiles() {
-        for (lang in Language.ALL) for (name in listOf(Language.DICTIONARY, Language.NEXT_WORDS, Language.EMOJI_WORDS)) {
+        for (lang in Language.ALL.filter { !it.pinyin }) for (name in listOf(Language.DICTIONARY, Language.NEXT_WORDS, Language.EMOJI_WORDS)) {
             assertTrue("${lang.id} $name", File("src/main/assets/" + lang.asset(name)).exists())
         }
-        assertTrue(c.values.all { it.size > 50000 })
+        // Tatoeba has few sentences in some languages to confirm the subtitles' words with:
+        // their dictionaries are smaller.
+        val small = setOf("da", "no", "sv", "uk")
+        for ((id, corr) in c) assertTrue("$id ${corr.size}", corr.size > if (id in small) 25000 else 50000)
         // A regional English is the US one, changed: colour in, color out.
         assertTrue(c["en_GB"]!!.isKnown("colour")); assertTrue(!c["en_GB"]!!.isKnown("color"))
     }
@@ -49,6 +53,33 @@ class LanguagesTest {
         fixes("de", "fur", "für"); fixes("de", "strasse", "Straße"); fixes("de", "konnen", "können"); fixes("de", "uber", "über")
         fixes("es", "espanol", "español"); fixes("es", "manana", "mañana"); fixes("es", "tambien", "también")
         fixes("it", "perche", "perché"); fixes("it", "citta", "città"); fixes("it", "piu", "più")
+        fixes("nl", "ideeen", "ideeën"); fixes("nl", "geinteresseerd", "geïnteresseerd")
+    }
+
+    @Test fun luneOsLanguages() {
+        // Their own letters, and the keys keep their places: backspace and Return the size they are in English.
+        assertEquals("qwertyuiopå", Keymap.letters(Language.byId("da")!!)[0].joinToString("") { it.key.text })
+        assertEquals("йцукенгшщзх", Keymap.letters(Language.byId("ru")!!)[0].joinToString("") { it.key.text })
+        for (lang in Language.ALL) {
+            val rows = Keymap.letters(lang)
+            assertEquals(lang.id, 10f, rows[1].sumOf { it.weight.toDouble() }.toFloat(), 0.001f)
+            assertEquals(lang.id, 1f, rows[1].last().weight)
+            assertEquals(lang.id, 1f, rows[2].last().weight)
+        }
+        // Accents go in; й and ї are letters of their own, not accented и and і.
+        fixes("cs", "dekuji", "děkuji"); fixes("pl", "dziekuje", "dziękuję"); fixes("pt", "nao", "não")
+        fixes("sv", "hor", "hör")
+        // Russian writes ё as е as often as not: both are right.
+        keeps("ru", "еще"); keeps("ru", "ещё")
+        assertEquals('й', Language.base('й')); assertEquals('l', Language.base('ł'))
+        keeps("ru", "мой"); keeps("ru", "мои"); keeps("uk", "п'ять")
+        keeps("ar", "شكرا"); keeps("he", "שלום")
+    }
+
+    @Test fun dutchTypos() {
+        fixes("nl", "alstublief", "alstublieft"); fixes("nl", "hardstikke", "hartstikke")
+        fixes("nl", "vandag", "vandaag"); fixes("nl", "gezelig", "gezellig")
+        keeps("nl", "fiets"); keeps("nl", "een"); keeps("nl", "één")
     }
 
     @Test fun wordsThatDifferOnlyByAccentAreBothKept() {
@@ -89,9 +120,11 @@ class LanguagesTest {
 
     @Test fun layoutsHaveEveryLetterOnce() {
         for (lang in Language.ALL) {
-            val letters = Keymap.letters(lang).flatten().filter { it.drawn && it.key.kind == Kind.CHAR }
-                .map { it.key.text }.filter { it.length == 1 && it[0] in 'a'..'z' }
-            assertEquals(lang.id, ('a'..'z').map { it.toString() }, letters.sorted())
+            val keys = Keymap.letters(lang).flatten().filter { it.drawn && it.key.kind == Kind.CHAR }.map { it.key.text }
+            assertEquals(lang.id, keys.size, keys.toSet().size)
+            // The Latin layouts have all of a to z.
+            val latin = keys.filter { it.length == 1 && it[0] in 'a'..'z' }
+            if (lang.layout.rows[0][0] in 'a'..'z') assertEquals(lang.id, ('a'..'z').map { it.toString() }, latin.sorted())
         }
         assertEquals("azertyuiop", Keymap.letters(Language.byId("fr")!!)[0].joinToString("") { it.key.text })
         assertEquals("qwertzuiop", Keymap.letters(Language.byId("de")!!)[0].joinToString("") { it.key.text })
@@ -101,7 +134,14 @@ class LanguagesTest {
         val us = Keymap.letters(Language.EN_US)
         for (lang in Language.ALL) {
             val rows = Keymap.letters(lang)
-            for (r in rows.indices) assertEquals(lang.id, us[r].map { it.key.alt }, rows[r].map { it.key.alt })
+            // As far as the Pre's own row goes; keys past it (å, æ, ø...) print none.
+            for (r in rows.indices) {
+                // The comma (whose alternate is _) aside: it keeps its place at the row's end.
+                val ours = rows[r].filter { it.key.kind == Kind.CHAR && it.key.alt != "_" }.map { it.key.alt }
+                val pre = us[r].filter { it.key.kind == Kind.CHAR && it.key.alt != "_" }.map { it.key.alt }
+                assertEquals(lang.id, pre, ours.take(pre.size))
+                assertTrue(lang.id, ours.drop(pre.size).all { it == null })
+            }
         }
     }
 

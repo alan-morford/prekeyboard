@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Build a dictionary.txt for a language other than English (fr, de, es, it).
+"""Build a dictionary.txt for a language other than English (fr, de, es, it, nl, and those
+LuneOS's keyboard has: cs, da, fi, hu, no, pl, pt, sv, ru, uk, ar, he).
 
 How common each word is comes from Hermit Dave's FrequencyWords (OpenSubtitles 2018,
 CC BY-SA 4.0). Subtitles hold typos and odd spellings as well as words, so a word is kept
@@ -41,13 +42,36 @@ LETTERS = {
     "de": "a-zäöüß",
     "es": "a-záéíñóúü",
     "it": "a-zàèéìíîòóùú",
+    "nl": "a-zàáâäçèéêëíîïóôöúûü",
+    "cs": "a-záčďéěíňóřšťúůýž",
+    "da": "a-zåæøéü",
+    "fi": "a-zåäöšž",
+    "hu": "a-záéíóöőúüű",
+    "no": "a-zåæøéèêóòô",
+    "pl": "a-ząćęłńóśźż",
+    "pt": "a-záâãàçéêíóôõúü",
+    "sv": "a-zåäöé",
+    "ru": "а-яё",
+    "uk": "а-щьюяєіїґ'’",
+    "ar": "\u0621-\u063a\u0641-\u064a",
+    "he": "\u05d0-\u05ea",
 }[lang]
 # One-letter words people type alone.
-SINGLE = {"fr": "aày", "de": "", "es": "aeouy", "it": "aeièo"}[lang]
+SINGLE = {"fr": "aày", "de": "", "es": "aeouy", "it": "aeièo", "nl": "u", "cs": "aiksuvoz",
+          "da": "iå", "fi": "", "hu": "as", "no": "iå", "pl": "aiouwz", "pt": "aeoà", "sv": "iåö",
+          "ru": "ивксуояа", "uk": "івузаояй", "ar": "و", "he": ""}[lang]
 WORD = re.compile(rf"[{LETTERS}]+", re.IGNORECASE)
 ONLY = re.compile(rf"^[{LETTERS}]+$")
 # Kept on the subtitles alone at this count; with Tatoeba agreeing, at this lower one.
 ALONE = 400
+# Tatoeba has far fewer sentences in some languages to agree with, so their subtitles count
+# alone sooner.
+ALONE = {"nl": 80, "da": 40, "no": 30, "sv": 40, "ar": 150, "cs": 150, "fi": 150, "pl": 150,
+         "he": 150, "uk": 30, "pt": 150}.get(lang, ALONE)
+# Misspellings common enough in subtitles to pass, kept out so autocorrect fixes them.
+TYPOS = {
+    "nl": "astublieft alsjeblief alstublief hardstikke hartstikken sergant",
+}.get(lang, "").split()
 WITH_TATOEBA = 4
 MAX_WORDS = 120000
 # A spelling this many times rarer than another differing only in accents is a slip.
@@ -70,16 +94,19 @@ with bz2.open(sentences, "rt", encoding="utf-8") as f:
         text = parts[2]
         # Sentence starts: the first word, and words after . ! ? or an opening quote.
         prev_end = True
-        for m in re.finditer(rf"[{LETTERS}]+|[.!?¡¿:«»\"“”„]", text, re.IGNORECASE):
+        for m in re.finditer(rf"[{LETTERS}]+|[.!?¡¿:«»\"“”„؟]", text, re.IGNORECASE):
             t = m.group(0)
             if not t[0].isalpha():
                 prev_end = True
                 continue
-            k = t.lower()
+            k = t.lower().replace("’", "'")
             seen[k] += 1
             if not prev_end:
                 (upper if t[0].isupper() else lower)[k] += 1
             prev_end = False
+
+# Ukrainian's apostrophe (п'ять): the subtitles leave it out (пять), Tatoeba keeps it.
+apostrophe = {k.replace("'", ""): k for k in seen if "'" in k.strip("'")}
 
 counts = {}
 with open(freq_path, encoding="utf-8") as f:
@@ -90,11 +117,22 @@ with open(freq_path, encoding="utf-8") as f:
         w, n = parts[0], int(parts[1])
         if n < WITH_TATOEBA:
             break                              # the file is most common first
+        w = w.replace("’", "'")
+        if w in apostrophe and seen[apostrophe[w]] > seen[w]:
+            w = apostrophe[w]
+        if w.strip("'") != w:
+            continue
         if not ONLY.match(w) or w != w.lower():
             continue
         if len(w) == 1 and w not in SINGLE:
             continue
+        if w in TYPOS:
+            continue
         if seen[w] == 0 and (n < ALONE or w in english):
+            continue
+        # Ukrainian is checked against Russian (passed in English's place): a Russian word
+        # in Ukrainian subtitles needs Ukrainian sentences that really use it.
+        if lang == "uk" and w in english and seen[w] < 10 and seen[w] * 50 < n:
             continue
         # Mostly capitalised in mid-sentence (a noun in German, a name): kept so. "Sie" and
         # "sie" are both common, so it takes a strong lead.
@@ -110,8 +148,11 @@ with open(freq_path, encoding="utf-8") as f:
 
 def fold(w):
     """In plain letters, as Language.fold: "être" -> "etre", "cœur" -> "coeur", "straße" -> "strasse"."""
-    w = w.lower().replace("ß", "ss").replace("œ", "oe").replace("æ", "ae")
-    return "".join(c for c in unicodedata.normalize("NFD", w) if not unicodedata.combining(c))
+    w = w.lower().replace("ß", "ss").replace("œ", "oe").replace("æ", "ae").replace("ł", "l")
+    # Letters of their own, not accented ones: Russian and Ukrainian й, Ukrainian ї.
+    w = w.replace("й", "\0").replace("ї", "\1")
+    w = "".join(c for c in unicodedata.normalize("NFD", w) if not unicodedata.combining(c))
+    return w.replace("\0", "й").replace("\1", "ї")
 
 # Per spelling without accents: the commonest form's subtitle count, and its Tatoeba count.
 best, best_seen = collections.defaultdict(int), collections.defaultdict(int)

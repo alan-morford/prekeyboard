@@ -36,8 +36,7 @@ class CrashActivity : Activity() {
         }
         column.addView(TextView(this).apply {
             this.text = (if (reports.size == 1) "Pre Keyboard crashed. " else "Pre Keyboard crashed ${reports.size} times. ") +
-                "Send the report by email, so it can be fixed? It says where in the keyboard it went wrong, " +
-                "and on what phone; it has nothing you typed."
+                "Email the report so it can be fixed? It has nothing you typed."
             setTextColor(Color.rgb(0xb4, 0xb4, 0xb4))
             setPadding(0, 0, 0, unit / 2)
         })

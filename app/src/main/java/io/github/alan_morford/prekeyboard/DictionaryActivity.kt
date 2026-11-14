@@ -52,8 +52,7 @@ class DictionaryActivity : Activity(), SharedPreferences.OnSharedPreferenceChang
             gravity = Gravity.CENTER
         })
         column.addView(TextView(this).apply {
-            text = "Words you added by holding them in the suggestion bar, or kept by tapping " +
-                "them as typed in the bar. Autocorrect leaves them alone and swiping can spell them."
+            text = "Words autocorrect leaves alone."
             setTextColor(GREY)
             gravity = Gravity.CENTER
             setPadding(0, unit / 2, 0, unit)
@@ -62,7 +61,9 @@ class DictionaryActivity : Activity(), SharedPreferences.OnSharedPreferenceChang
         // One button per language family checked, when there is more than one.
         val settings = Settings.read(this)
         lang = settings.language
-        val families = settings.languages.distinctBy { it.family }
+        // Chinese keeps no list of words: what is picked for each pinyin is remembered on its own.
+        val families = settings.languages.filter { !it.pinyin }.distinctBy { it.family }
+        if (lang.pinyin) lang = families.firstOrNull() ?: Language.EN_US
         if (families.size > 1) {
             if (families.none { it.family == lang.family }) lang = families[0]
             column.addView(LinearLayout(this).apply {
@@ -127,7 +128,7 @@ class DictionaryActivity : Activity(), SharedPreferences.OnSharedPreferenceChang
         column.addView(deletedTitle)
         column.addView(TextView(this).apply {
             tag = "deletedNote"
-            text = "Words you deleted by holding them in the suggestion bar. They aren't offered or corrected to."
+            text = "Words never suggested or corrected to."
             setTextColor(GREY)
             setPadding(0, unit / 4, 0, unit / 4)
         })

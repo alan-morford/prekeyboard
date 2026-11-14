@@ -111,12 +111,15 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
      * the main thread, with nothing corrected or suggested until it is in.
      */
     private fun useLanguage(lang: Language) {
+        finishPinyin()
         language = lang
+        view?.wordsAllowed = prose() && !lang.pinyin
         if (wordsFor == lang) return
         // What was learned in the language before is kept before its words are put away.
         saveNextWords()
         wordsFor = lang
         composer.corrector = null; decoder = null; emojiWords = null; nextWords = null; dictionary = null
+        savePinyin(); pinyin = null
         swipeGuesses = emptyList(); swipeLikely = null
         refreshBar()
         val app = applicationContext
@@ -124,6 +127,13 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
             val i = all.indexOf(lang)
             if (i < 0 || all.size < 2) emptyList()
             else listOf(all[(i + 1) % all.size], all[(i - 1 + all.size) % all.size]).distinct()
+        }
+        if (lang.pinyin) {
+            loadHandler.post {
+                val p = pinyinEngine ?: readPinyin(app).also { pinyinEngine = it }
+                main.post { if (wordsFor == lang) { pinyin = p; refreshBar() } }
+            }
+            return
         }
         loadHandler.post {
             val fam = families.getOrPut(lang.family) { readFamily(app, lang) }
@@ -137,12 +147,103 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
                 refreshBar()
             }
             // The languages a flick would go to next, read ahead; the one in use stays newest.
-            for (l in around) if (l.id !in dictionaries && wordsFor == lang) {
+            for (l in around) if (!l.pinyin && l.id !in dictionaries && wordsFor == lang) {
                 keep(l) { readDictionary(app, l) }
                 families.getOrPut(l.family) { readFamily(app, l) }
             }
             keep(lang) { dict }
         }
+    }
+
+    // --- Pinyin --------------------------------------------------------------------------------
+
+    /** Chinese's words by their pinyin, once read (it stays read: one file, whichever language is next). */
+    @Volatile private var pinyinEngine: Pinyin? = null
+    /** The same, while Chinese is the language typed in. */
+    private var pinyin: Pinyin? = null
+    /** The pinyin typed so far, shown in the field as composing text. */
+    private val spelling = StringBuilder()
+    /** What [spelling] may be, as offered in the bar. */
+    private var offered: List<Pinyin.Candidate> = emptyList()
+
+    private fun readPinyin(app: android.content.Context): Pinyin {
+        val p = app.assets.open(Language.ALL.first { it.pinyin }.asset(Language.PINYIN))
+            .bufferedReader(Charsets.UTF_8).useLines { Pinyin(it) }
+        runCatching { File(app.filesDir, PINYIN_FILE).takeIf { it.exists() }?.useLines { p.load(it) } }
+        return p
+    }
+
+    /** Typing in Chinese, in a field for words: letters spell pinyin. */
+    private fun pinyinTyping() = language.pinyin && prose()
+
+    /** The pinyin as it now is: in the field, underlined, and its characters in the bar. */
+    private fun showSpelling() {
+        val ic = currentInputConnection
+        if (spelling.isEmpty()) {
+            ic?.setComposingText("", 1)
+            ic?.finishComposingText()
+            offered = emptyList()
+            view?.candidates = null
+            return
+        }
+        ic?.setComposingText(spelling, 1)
+        offered = pinyin?.candidates(spelling.toString()) ?: emptyList()
+        view?.candidates = offered.map { it.word }
+    }
+
+    /** [c] goes in for the pinyin it covers; the rest of the pinyin, if any, is still being typed. */
+    private fun takeCandidate(c: Pinyin.Candidate) {
+        val key = spelling.substring(0, c.consumed)
+        val rest = spelling.substring(c.consumed)
+        val ic = currentInputConnection ?: return
+        ic.beginBatchEdit()
+        ic.commitText(c.word, 1)
+        spelling.setLength(0)
+        spelling.append(rest)
+        showSpelling()
+        ic.endBatchEdit()
+        if ((editor?.imeOptions ?: 0) and NO_LEARNING == 0) { pinyin?.learn(key, c.word); pinyinDirty = true }
+    }
+
+    /** All of the pinyin goes in as its likeliest characters, a piece at a time. */
+    private fun commitSpelling() {
+        while (spelling.isNotEmpty()) {
+            val c = offered.firstOrNull()
+            if (c == null) {
+                currentInputConnection?.commitText(spelling.toString(), 1)
+                spelling.setLength(0)
+                showSpelling()
+                return
+            }
+            takeCandidate(c)
+        }
+    }
+
+    /** The pinyin is left in the field as typed, and the bar let go of (the field changed, say). */
+    private fun finishPinyin() {
+        if (spelling.isEmpty() && view?.candidates == null) return
+        spelling.setLength(0)
+        offered = emptyList()
+        currentInputConnection?.finishComposingText()
+        view?.candidates = null
+    }
+
+    override fun onCandidate(i: Int) {
+        if (voice.on) voice.stop(now = true)
+        ownEdit()
+        offered.getOrNull(i)?.let { takeCandidate(it) }
+    }
+
+    /** What the owner picked for which pinyin has changed since it was last kept. */
+    private var pinyinDirty = false
+
+    private fun savePinyin() {
+        val p = pinyin ?: return
+        if (!pinyinDirty) return
+        pinyinDirty = false
+        val text = p.picks().joinToString("\n")
+        val file = File(filesDir, PINYIN_FILE)
+        Thread { runCatching { File(file.path + ".new").apply { writeText(text) }.renameTo(file) } }.start()
     }
 
     /** [lang]'s dictionary, kept as the newest, read with [read] if it isn't kept already. On the loading thread. */
@@ -195,6 +296,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         val next = s.languages[((i + step) % n + n) % n]
         settle()
         composer.forget()
+        commitSpelling()
         Settings.update(this) { it.copy(language = next) }
         view?.flashLanguage(next.short)
     }
@@ -277,7 +379,9 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         // touches gets alternatives, as a word tapped would.
         tapped = true
         view?.apply(Settings.read(this))
-        view?.wordsAllowed = prose()
+        spelling.setLength(0); offered = emptyList(); view?.candidates = null
+        view?.wordsAllowed = prose() && !language.pinyin
+        view?.padKind = padFor(info)
         view?.reset()
         refreshBar()
         offerPaste()
@@ -297,6 +401,8 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         voice.stop(now = true)
         deleting = false
         saveNextWords()
+        finishPinyin()
+        savePinyin()
         super.onFinishInputView(finishingInput)
     }
 
@@ -737,6 +843,11 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
                                    candidatesStart: Int, candidatesEnd: Int) {
         super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd)
         swipeLikely = null
+        // The pinyin is no longer being typed where the cursor is (tapped elsewhere, or the
+        // app took it): it stays in the text as it is.
+        // Reports about the keyboard's own edits can come late, so only a move a while after one counts.
+        if (spelling.isNotEmpty() && SystemClock.uptimeMillis() - ownEditAt > OWN_EDIT_MS &&
+            (candidatesEnd < 0 || newSelStart != newSelEnd || newSelEnd != candidatesEnd)) finishPinyin()
         // Selecting changes no text (and text "before the cursor" is then before the selection):
         // the marks are checked once the cursor is a cursor again.
         if (newSelStart == newSelEnd) checkMarks(newSelStart)
@@ -765,6 +876,33 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
     }
 
     // --- What the field allows --------------------------------------------------------------
+
+    /**
+     * Which number pad a field gets, if it takes only numbers: Android's number, phone and
+     * date/time classes (a PIN is a number password). Null for anything with letters.
+     */
+    private fun padFor(info: EditorInfo?): Keymap.Pad? {
+        val type = info?.inputType ?: return null
+        return when (type and InputType.TYPE_MASK_CLASS) {
+            InputType.TYPE_CLASS_NUMBER -> {
+                val signed = type and InputType.TYPE_NUMBER_FLAG_SIGNED != 0
+                val decimal = type and InputType.TYPE_NUMBER_FLAG_DECIMAL != 0
+                when {
+                    signed && decimal -> Keymap.Pad.SIGNED_DECIMAL
+                    signed -> Keymap.Pad.SIGNED
+                    decimal -> Keymap.Pad.DECIMAL
+                    else -> Keymap.Pad.NUMBER
+                }
+            }
+            InputType.TYPE_CLASS_PHONE -> Keymap.Pad.PHONE
+            InputType.TYPE_CLASS_DATETIME -> when (type and InputType.TYPE_MASK_VARIATION) {
+                InputType.TYPE_DATETIME_VARIATION_DATE -> Keymap.Pad.DATE
+                InputType.TYPE_DATETIME_VARIATION_TIME -> Keymap.Pad.TIME
+                else -> Keymap.Pad.DATETIME
+            }
+            else -> null
+        }
+    }
 
     /**
      * A field for words: not a password, an address or a URL. Swiping and the suggestion bar
@@ -808,7 +946,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
             if (deletes > 1) show(emptyList(), verbatim = false, emoji = false)
             return
         }
-        if (!v.settings.showsBar || !prose()) { show(emptyList(), verbatim = false, emoji = false); return }
+        if (!v.settings.showsBar || !prose() || language.pinyin) { show(emptyList(), verbatim = false, emoji = false); return }
         // The cursor moved away from the swiped word: it is no longer the one to replace.
         if (composer.swiped != null && !composer.swipedIsLast()) composer.forget()
         val at = wordAtCursor()
@@ -1106,14 +1244,43 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         settle()
         if (voice.on) voice.stop(now = true)
         ownEdit()
-        composer.type(text, rules())
-        if (text == " " || (text.length == 1 && text[0] in ".,?!:;")) learnPair()
+        if (pinyinTyping()) { pinyinText(text); return }
+        // Punctuation as the language writes it (Arabic's ؟ for ?), but a point in a number stays.
+        val t = language.punctuation[text] ?: text
+        composer.type(t, rules())
+        if (t == " " || (t.length == 1 && t[0] in ".,?!:;،؟؛")) learnPair()
+    }
+
+    /**
+     * A key typed in Chinese: a lowercase letter adds to the pinyin; space takes the likeliest
+     * characters; anything else puts the pinyin in as its likeliest characters first, then
+     * goes in itself, punctuation as Chinese writes it (，。？！).
+     */
+    private fun pinyinText(text: String) {
+        if (text.length == 1 && text[0] in 'a'..'z') {
+            spelling.append(text)
+            showSpelling()
+            return
+        }
+        if (text == " " && spelling.isNotEmpty()) { offered.firstOrNull()?.let { takeCandidate(it) } ?: commitSpelling(); return }
+        val afterDigit = spelling.isEmpty() &&
+            currentInputConnection?.getTextBeforeCursor(1, 0)?.firstOrNull()?.isDigit() == true
+        commitSpelling()
+        composer.forget()
+        // A point in a number (3.14) stays a point.
+        val out = if (afterDigit && (text == "." || text == ",")) text else Pinyin.PUNCTUATION[text] ?: text
+        currentInputConnection?.commitText(out, 1)
     }
 
     override fun onBackspace(word: Boolean) {
         settle()
         if (voice.on) voice.stop(now = true)
         ownEdit()
+        if (spelling.isNotEmpty()) {
+            if (word) spelling.setLength(0) else spelling.setLength(spelling.length - 1)
+            showSpelling()
+            return
+        }
         deletes++
         if (!word && composer.backspace()) return
         if (!word && backspaceIntoMark()) return
@@ -1130,6 +1297,13 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         settle()
         if (voice.on) voice.stop(now = true)
         ownEdit()
+        // Return while pinyin is being typed puts it in as letters, as typed.
+        if (spelling.isNotEmpty()) {
+            currentInputConnection?.commitText(spelling.toString(), 1)
+            spelling.setLength(0)
+            showSpelling()
+            return
+        }
         composer.beforeEnter(rules())
         val info = editor
         val options = info?.imeOptions ?: 0
@@ -1261,6 +1435,8 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
     }
 
     override fun wantsCaps(): Boolean {
+        // Chinese has no capitals: shift stays off, so the letters spell pinyin.
+        if (pinyinTyping()) return false
         val info = editor ?: return false
         if (info.inputType and InputType.TYPE_MASK_CLASS != InputType.TYPE_CLASS_TEXT) return false
         return (currentInputConnection?.getCursorCapsMode(info.inputType) ?: 0) != 0
@@ -1270,6 +1446,8 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         private const val TAG = "PreKeyboard"
         /** A word the owner kept: as likely, to the swipe decoder, as a fairly common word. */
         private const val LEARNED_SCORE = 10
+        /** The characters the owner picked for which pinyin. */
+        private const val PINYIN_FILE = "pinyin_mine.txt"
         /** The longest word looked at around a tapped cursor. */
         private const val MAX_TAPPED = 32
         /** A cursor move this soon after the keyboard changed the text is the keyboard's own. */

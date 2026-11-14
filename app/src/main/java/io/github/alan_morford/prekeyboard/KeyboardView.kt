@@ -78,6 +78,8 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         fun onLanguageFlick(step: Int) {}
         /** A GIF or sticker from KLIPY was tapped on the emoji page, found by searching for [query]. */
         fun onMedia(kind: Klipy.Kind, item: Klipy.Item, query: String?) {}
+        /** The [i]th of the [candidates] (characters for the pinyin typed) was tapped. */
+        fun onCandidate(i: Int) {}
     }
 
     var settings = Settings.read(context)
@@ -90,8 +92,9 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
     /** New settings, applied in place: a new style repaints, a new height (or bar) re-lays the keyboard. */
     fun apply(s: Settings) {
         if (s.sound) Sounds.prepare(context)
-        val resize = s.height != settings.height || s.showsBar != settings.showsBar
-        val relayout = s.language != settings.language
+        val resize = s.height != settings.height || s.showsBar != settings.showsBar || s.numberRow != settings.numberRow ||
+            s.language.pinyin != settings.language.pinyin
+        val relayout = s.language != settings.language || s.hideKeyDigits != settings.hideKeyDigits
         settings = s
         if (resize) { painter.clear(); requestLayout() }
         else if (relayout) layoutKeys()
@@ -119,9 +122,16 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
     private var navInset = 0
     private val bottomPad get() = 2 * dp + navInset
     /** The suggestion bar, above the keys: when it is switched on, or there is a notice to show in it. */
-    private val barShown get() = settings.showsBar || notice != null || voiceLine != null || searchKind != null
+    private val barShown get() = ((settings.showsBar || settings.language.pinyin) && page != Page.PAD) ||
+        notice != null || voiceLine != null || searchKind != null
     private val barHeight get() = if (barShown) Math.round(rowHeight * 0.72f).toFloat() else 0f
-    private val keysHeight get() = barHeight + rowHeight * 4 + topBorder + bottomPad
+    private val keysHeight get() = barHeight + rowHeight * rowCount + topBorder + bottomPad
+
+    /**
+     * Rows of keys: four, or five with the number row over the letters (the Sym and emoji
+     * pages then have five as well, so the keyboard keeps its height); the number pad, four.
+     */
+    private val rowCount get() = if (page != Page.PAD && settings.numberRow) 5 else 4
 
     private val cellH get() = rowHeight * 0.85f
     private val popupPad get() = 5 * dp
@@ -209,9 +219,21 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
     private var alt = Alt.OFF
     private var lastAltTap = NEVER
 
-    private enum class Page { LETTERS, SYMBOLS, EMOJI }
+    private enum class Page { LETTERS, SYMBOLS, EMOJI, PAD }
     private var page = Page.LETTERS
-    private val rows get() = if (page == Page.SYMBOLS) Keymap.symbols else Keymap.letters(settings.language)
+    private val rows get() = when (page) {
+        Page.SYMBOLS -> Keymap.symbols(settings.numberRow)
+        Page.PAD -> Keymap.pad(padKind ?: Keymap.Pad.NUMBER)
+        else -> Keymap.letters(settings.language, settings.numberRow, settings.hideKeyDigits)
+    }
+
+    /**
+     * The field takes only numbers (a PIN, a code, a phone number): the number pad comes up in
+     * place of the letters, its keys beside the 0 those this kind of number needs. Set by the
+     * service for each field, before [reset].
+     */
+    var padKind: Keymap.Pad? = null
+        set(v) { if (v != field) { field = v; if (page == Page.PAD) { layoutKeys(); invalidate() } } }
 
     internal val emoji by lazy {
         EmojiPanel(context, this, bold, object : EmojiPanel.Actions {
@@ -225,9 +247,12 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
 
     private fun show(p: Page) {
         if (page == Page.EMOJI && p != Page.EMOJI) emoji.close()
+        val height = keysHeight
         page = p
         alt = Alt.OFF
         if (p == Page.EMOJI) emoji.open()
+        // The pad has its own number of rows, and no suggestion bar.
+        if (keysHeight != height) requestLayout()
         layoutKeys()
         invalidate()
     }
@@ -301,7 +326,8 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         zones.clear()
         if (width == 0) return
         if (page == Page.EMOJI) {
-            emoji.layout(keyboardTop() + topBorder, RectF(0f, rowRect(0).top, width.toFloat(), rowRect(2).bottom), rowRect(3))
+            val last = rowCount - 1
+            emoji.layout(keyboardTop() + topBorder, RectF(0f, rowRect(0).top, width.toFloat(), rowRect(last - 1).bottom), rowRect(last))
             return
         }
         for ((i, row) in rows.withIndex()) {
@@ -317,6 +343,8 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
                 left = right
             }
         }
+        letterKeyWidth = zones.filter { it.key.kind == Kind.CHAR }.minOfOrNull { it.rect.width() }
+            ?.coerceAtMost(width / 10f) ?: (width / 10f)
     }
 
     // --- Drawing ----------------------------------------------------------------------------
@@ -398,8 +426,11 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         }
     }
 
-    /** Whether holding [key] opens its list: only with "Hold for more" on. */
-    private fun holds(key: Key) = settings.holdForMore && key.extended != null
+    /**
+     * Whether holding [key] opens its list: only with "Hold for more" on, but always on the
+     * number pad, where holding 0 for + is what a phone's dial pad does.
+     */
+    private fun holds(key: Key) = (settings.holdForMore || page == Page.PAD) && key.extended != null
 
     /**
      * The mark of a key with more under it: a small dot in the style's colour, in the top
@@ -457,8 +488,13 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         centred(c, s, box)
     }
 
-    /** The letter's size: big and bold, but held to the key's width and to half its height. */
-    private fun letterSize(): Float = Math.min(rowHeight * 0.5f, width / 10f * 0.56f)
+    /**
+     * The letter's size: big and bold, but held to the key's width and to half its height.
+     * The narrowest letter key on the page sets it (a language with more letters to a row
+     * has narrower keys), so every letter on the page is the same size.
+     */
+    private fun letterSize(): Float = Math.min(rowHeight * 0.5f, letterKeyWidth * 0.56f)
+    private var letterKeyWidth = 0f
 
     /** Inset of the glyphs' ink from the key's edges. */
     private fun inset(r: RectF) = 2.5f * dp + r.width() * 0.08f
@@ -468,20 +504,34 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
      * letter low in the key, just off centre away from it; a key without one centres its glyph.
      */
     private fun drawCap(c: Canvas, key: Key, r: RectF) {
-        val letter = if (page == Page.SYMBOLS) key.text else key.text.uppercase()
+        val letter = if (page == Page.SYMBOLS || showsLowercase()) key.text else key.text.uppercase()
         val size = letterSize()
         val a = key.alt
+        if (page == Page.PAD) {
+            // The number pad's digits, big, in the accent colour as the Sym page's are.
+            text.textSize = fitted(letter, Math.min(r.height() * 0.56f, r.width() * 0.42f), r.width() - 2 * inset(r))
+            text.color = if (key.accent) style.accent else Color.WHITE
+            centred(c, letter, r)
+            return
+        }
         if (a == null && key.corner != null) {
             // The period, printed as I, K and M are, low and to the left of its corner icon.
             // It has no alternate, so the orange key doesn't dim it.
             text.textSize = size
             text.color = Color.WHITE
-            text.getTextBounds("H", 0, 1, ink)
-            var baseline = r.bottom - inset(r) - ink.bottom
+            var baseline = letterLine(r)
             text.getTextBounds(letter, 0, letter.length, ink)
-            baseline = Math.min(baseline, r.bottom - inset(r) - ink.bottom)
+            baseline = Math.min(baseline, baseline - ink.bottom)
             val lx = r.centerX() - r.width() * LETTER_NUDGE - text.measureText(letter) / 2
             c.drawText(letter, lx, baseline, text)
+            return
+        }
+        if (a == null && page == Page.LETTERS && letter.all { it.isLetter() }) {
+            // A letter past the Pre's own (å, ж, ج): no alternate, but on the letters' line,
+            // in the middle of its key.
+            text.textSize = fitted(letter, size, r.width() - 2 * inset(r))
+            text.color = Color.WHITE
+            c.drawText(letter, r.centerX() - text.measureText(letter) / 2, letterLine(r), text)
             return
         }
         if (a == null) {
@@ -495,18 +545,16 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         // The letter steps back while the orange key says the alternate is what will be typed.
         text.textSize = size
         text.color = Color.WHITE
-        text.alpha = if (alt != Alt.OFF) 89 else 255
-        // Every letter sits on one baseline, taken from a flat-bottomed capital, so Q's tail
-        // hangs below the line instead of lifting the Q. As on the Pre, a letter is centred
-        // in its key by its advance (not its ink, which Q's tail widens), nudged a little
-        // away from its alternate.
+        text.alpha = if (alt != Alt.OFF && !key.hideAlt) 89 else 255
+        // Every letter sits on one line, so nothing moves as shift or the lowercase setting
+        // changes. As on the Pre, a letter is centred in its key by its advance (not its ink,
+        // which Q's tail widens), nudged a little away from its alternate.
         // Only a letter hangs, though: a comma's tail or the @'s bowl would reach the key's
-        // edge, so a symbol is lifted until its ink rests on the letters' bottom line.
-        text.getTextBounds("H", 0, 1, ink)
-        var baseline = r.bottom - i - ink.bottom
+        // edge, so a symbol is lifted until its ink rests on the letters' line.
+        var baseline = letterLine(r)
         if (!letter.all { it.isLetter() }) {
             text.getTextBounds(letter, 0, letter.length, ink)
-            baseline = Math.min(baseline, r.bottom - i - ink.bottom)
+            baseline = Math.min(baseline, baseline - ink.bottom)
         }
         val nudge = r.width() * LETTER_NUDGE * (if (altLeft) 1 else -1)
         val lx = r.centerX() + nudge - text.measureText(letter) / 2
@@ -515,6 +563,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
 
         // The alternate, in the top corner: its edge meets the inset, and it is centred on a
         // capital's height there, so "-" and "'" line up with the digits.
+        if (key.hideAlt) return
         val asize = size * 0.7f
         text.textSize = asize
         text.color = if (a.length == 1 && a[0].isDigit()) style.accent else Color.WHITE
@@ -523,6 +572,21 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         val ay = r.top + i + asize * CAP_HEIGHT / 2 - (ink.top + ink.bottom) / 2f
         c.drawText(a, ax, ay, text)
     }
+
+    /**
+     * The line every letter sits on in a key [r] (at the letters' size, already set): a
+     * capital's bottom at the key's inset, raised just enough that the tails of g, j, p, q
+     * and y (and Q's) clear the key's bottom edge by a little.
+     */
+    private fun letterLine(r: RectF): Float {
+        text.getTextBounds("H", 0, 1, ink)
+        val capLine = r.bottom - inset(r) - ink.bottom
+        text.getTextBounds(DESCENDERS, 0, DESCENDERS.length, ink)
+        return Math.min(capLine, r.bottom - CAP_PAD * dp - TAIL_GAP * dp - ink.bottom)
+    }
+
+    /** The letters show in lowercase: chosen, and shift is off. */
+    private fun showsLowercase() = settings.lowercase && page == Page.LETTERS && shift == Shift.OFF
 
     private fun centred(c: Canvas, s: String, r: RectF) {
         text.getTextBounds(s, 0, s.length, ink)
@@ -543,7 +607,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
 
     /** What a character key would type right now. */
     private fun output(key: Key): String {
-        if (alt != Alt.OFF && key.alt != null) return key.alt
+        if (alt != Alt.OFF && key.alt != null && !key.hideAlt) return key.alt
         return if (shift != Shift.OFF) key.text.uppercase() else key.text
     }
 
@@ -713,6 +777,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         barPaint.color = BAR
         c.drawRect(r, barPaint)
         if (searchKind != null) { drawSearch(c, r); return }
+        candidates?.let { if (voiceLine == null) { drawCandidates(c, r, it); return } }
         val cw = r.width() / 3
         // One baseline for every word, from the font rather than each word's ink, so a word
         // doesn't jump when a letter with a descender ("hop") comes along.
@@ -754,6 +819,103 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
             text.textSize = fitted(w, size, cw - 12 * dp)
             c.drawText(w, cell.centerX() - text.measureText(w) / 2, baseline, text)
         }
+    }
+
+    // --- Pinyin: the characters for what is typed ------------------------------------------
+
+    /**
+     * While pinyin is being typed, the characters and words it may be, likeliest first: they
+     * take the bar, packed from the left as wide as each needs, the first in orange. When they
+     * don't all fit, an arrow at the right shows the next ones (and, after the last, the first).
+     */
+    var candidates: List<String>? = null
+        set(v) { if (v != field) { field = v; candidateFrom = 0; invalidate() } }
+    /** The first candidate shown. */
+    private var candidateFrom = 0
+    /** Where each candidate shown was drawn, by its index; and the arrow, when there is one. */
+    private val candidateCells = ArrayList<Pair<Int, RectF>>()
+    private val candidateMore = RectF()
+    /** The candidate (or [MORE]) under the finger, while it is down. */
+    private var candidatePressed = NONE_PRESSED
+
+    private fun layoutCandidates(r: RectF, list: List<String>) {
+        candidateCells.clear()
+        candidateMore.setEmpty()
+        text.textSize = r.height() * 0.5f
+        val pad = 12 * dp
+        val minW = r.height() * 1.05f
+        val moreW = r.height() * 1.1f
+        var x = r.left
+        var i = candidateFrom
+        while (i < list.size) {
+            val w = Math.max(minW, text.measureText(list[i]) + 2 * pad)
+            // Room is kept for the arrow unless this is the last one.
+            val limit = if (i == list.size - 1) r.right else r.right - moreW
+            if (x + w > limit && candidateCells.isNotEmpty()) break
+            candidateCells += i to RectF(x, r.top, Math.min(x + w, limit), r.bottom)
+            x += w
+            i++
+        }
+        if (candidateFrom > 0 || i < list.size) candidateMore.set(r.right - moreW, r.top, r.right, r.bottom)
+    }
+
+    private fun drawCandidates(c: Canvas, r: RectF, list: List<String>) {
+        layoutCandidates(r, list)
+        val fm = text.fontMetrics
+        val baseline = r.centerY() - (fm.ascent + fm.descent) / 2
+        for ((n, pair) in candidateCells.withIndex()) {
+            val (i, cell) = pair
+            if (i == candidatePressed) { barPaint.color = BAR_PRESSED; c.drawRect(cell, barPaint) }
+            if (n > 0) {
+                barPaint.color = BAR_RULE
+                c.drawRect(cell.left, r.top + r.height() * 0.25f, cell.left + Math.max(1f, dp), r.bottom - r.height() * 0.25f, barPaint)
+            }
+            val w = list[i]
+            text.color = if (i == 0) Style.ORANGE.accent else Color.WHITE
+            text.textSize = fitted(w, r.height() * 0.5f, cell.width() - 8 * dp)
+            c.drawText(w, cell.centerX() - text.measureText(w) / 2, baseline, text)
+        }
+        if (!candidateMore.isEmpty) {
+            if (candidatePressed == MORE) { barPaint.color = BAR_PRESSED; c.drawRect(candidateMore, barPaint) }
+            barPaint.color = BAR_RULE
+            c.drawRect(candidateMore.left, r.top + r.height() * 0.25f, candidateMore.left + Math.max(1f, dp), r.bottom - r.height() * 0.25f, barPaint)
+            // More to come: an arrow pointing on (backspace's arrow, turned round). After the
+            // last: pointing back, to the first.
+            val more = candidateCells.lastOrNull()?.first?.let { it < list.size - 1 } ?: false
+            c.save()
+            if (more) c.rotate(180f, candidateMore.centerX(), candidateMore.centerY())
+            painter.icon(c, Painter.Icon.BACKSPACE, candidateMore.centerX(), candidateMore.centerY(), r.height() * 0.4f, Color.WHITE)
+            c.restore()
+        }
+    }
+
+    private fun candidateAt(x: Float, y: Float): Int {
+        if (!candidateMore.isEmpty && candidateMore.contains(x, y)) return MORE
+        return candidateCells.firstOrNull { it.second.contains(x, y) }?.first ?: NONE_PRESSED
+    }
+
+    /** A touch in the bar while candidates show: one picked, or the next ones shown. */
+    private fun candidateTouch(e: MotionEvent): Boolean {
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                candidatePressed = candidateAt(e.x, e.y)
+                if (candidatePressed != NONE_PRESSED) keyFeedback()
+            }
+            MotionEvent.ACTION_UP -> {
+                val was = candidatePressed
+                candidatePressed = NONE_PRESSED
+                val list = candidates
+                if (list != null && was != NONE_PRESSED && candidateAt(e.x, e.y) == was) {
+                    if (was == MORE) {
+                        val last = candidateCells.lastOrNull()?.first ?: 0
+                        candidateFrom = if (last < list.size - 1) last + 1 else 0
+                    } else host.onCandidate(was)
+                }
+            }
+            MotionEvent.ACTION_CANCEL -> candidatePressed = NONE_PRESSED
+        }
+        invalidate()
+        return true
     }
 
     /** Where the search's back arrow is, at the bar's left. */
@@ -1081,6 +1243,11 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
             invalidate()
             return true
         }
+        // Candidates for the pinyin: a touch that starts on them stays theirs.
+        if (candidates != null && voiceLine == null &&
+            (candidatePressed != NONE_PRESSED || (e.actionMasked == MotionEvent.ACTION_DOWN && barCell(x, y) >= 0))) {
+            return candidateTouch(e)
+        }
         // A touch that starts in the suggestion bar stays there.
         if (e.actionMasked == MotionEvent.ACTION_DOWN) barPressed = -1
         if (barPressed >= 0 || (e.actionMasked == MotionEvent.ACTION_DOWN && barCell(x, y) >= 0)) {
@@ -1289,7 +1456,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
             Kind.RETURN -> if (searchKind != null) endSearch(go = true) else host.onEnter()
             Kind.GLOBE -> host.onPickKeyboard()
             Kind.SPACE -> send(" ")
-            Kind.CHAR -> type(output(key), usedAlt = alt != Alt.OFF && key.alt != null)
+            Kind.CHAR -> type(output(key), usedAlt = alt != Alt.OFF && key.alt != null && !key.hideAlt)
         }
     }
 
@@ -1314,7 +1481,8 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         shift = Shift.OFF; autoShift = false; alt = Alt.OFF
         lastShiftTap = NEVER; lastAltTap = NEVER
         if (searchKind != null) barChange { searchKind = null; searchText.setLength(0) }
-        if (page != Page.LETTERS) show(Page.LETTERS)
+        val start = if (padKind != null) Page.PAD else Page.LETTERS
+        if (page != start) show(start)
         extended = null; extendedFrame = null; pressed = null; preview = null
         cursorMode = false; held = false
         swiping = false; swipeMaybe = false; swipeN = 0; barPressed = -1
@@ -1370,9 +1538,19 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         private const val RESTING_ALPHA = 46L
 
         private const val NO_FINGER = -1
+        /** No candidate under the finger; the arrow to the next ones. */
+        private const val NONE_PRESSED = -1
+        private const val MORE = -2
 
         /** No tap yet: far enough back that the next tap is never the second of a pair. */
         private const val NEVER = Long.MIN_VALUE / 2
+
+        /** The letters with tails below the line: the lowest of them sets the lowercase line. */
+        private const val DESCENDERS = "gjpqy"
+        /** Where the key cap starts inside its place (Painter's capPad), in dp. */
+        private const val CAP_PAD = 2.5f
+        /** The gap left between those tails and the cap's bottom edge, in dp. */
+        private const val TAIL_GAP = 2f
 
         /** Prelude's cap height, as a fraction of the font size. */
         private const val CAP_HEIGHT = 0.72f

@@ -1,5 +1,6 @@
 package io.github.alan_morford.prekeyboard
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.SharedPreferences
 import android.content.res.ColorStateList
@@ -37,11 +38,7 @@ class LanguagesActivity : Activity(), SharedPreferences.OnSharedPreferenceChange
             gravity = Gravity.CENTER
         })
         column.addView(TextView(this).apply {
-            text = "Check the languages you type in. With more than one, flick the space bar left " +
-                "or right to change language; its name shows on the space bar as it changes. Each " +
-                "language has its own keys (AZERTY for French, QWERTZ for German), words and " +
-                "suggestions. Autocorrect puts accents in for you (etre → être); Hold for more " +
-                "puts them on the keys too."
+            text = "Check the ones you type in. Flick the space bar to switch."
             setTextColor(GREY)
             gravity = Gravity.CENTER
             setPadding(0, unit / 2, 0, unit)
@@ -52,6 +49,11 @@ class LanguagesActivity : Activity(), SharedPreferences.OnSharedPreferenceChange
                 setTextColor(Color.WHITE)
                 buttonTintList = ColorStateList.valueOf(AppLook.ORANGE)
                 setPadding(unit / 2, unit / 2, 0, unit / 2)
+                // العربية and עברית are written right to left, and START would put them at the
+                // right (the app doesn't lay itself out right to left, so the text's own
+                // direction decides): LEFT, so every name starts at the left as the list does.
+                @SuppressLint("RtlHardcoded")
+                gravity = Gravity.LEFT or Gravity.CENTER_VERTICAL
                 setOnClickListener { toggle(lang, isChecked) }
             }
             boxes += lang to box

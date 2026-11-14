@@ -35,6 +35,42 @@ class ComposerTest {
         assertEquals("I don't think the cat is here. ", text.toString())
     }
 
+    @Test fun punctuationBringsItsSpaceAndBackspaceTakesOnlyThat() {
+        for (p in ",;:!?") {
+            text.setLength(0); composer.reset()
+            type("hello$p")
+            assertEquals("hello$p ", text.toString())
+            // Backspace takes the space, not the punctuation; the next one is ordinary.
+            assertEquals(false, composer.backspace()); field.delete(1)
+            assertEquals("hello$p", text.toString())
+        }
+        text.setLength(0); composer.reset()
+        type("yes, no; maybe: fine! why? ")
+        assertEquals("yes, no; maybe: fine! why? ", text.toString())
+        // Punctuation after punctuation stays together, the space moving after it.
+        text.setLength(0); composer.reset()
+        type("what?!")
+        assertEquals("what?! ", text.toString())
+        type("..."); text.setLength(0); composer.reset()
+        type("wait...")
+        assertEquals("wait... ", text.toString())
+    }
+
+    @Test fun noSpaceAfterPunctuationInNumbersLinksAndOnItsOwn() {
+        type("1,000 10:30 3.14 ")
+        assertEquals("1,000 10:30 3.14 ", text.toString())
+        text.setLength(0); composer.reset()
+        type("https://a.com/x?y=1 ")
+        assertEquals("https://a.com/x?y=1 ", text.toString())
+        text.setLength(0); composer.reset()
+        type(":)")
+        assertEquals(":)", text.toString())
+        // Not in a field that isn't for words.
+        text.setLength(0); composer.reset()
+        type("a,b", Composer.Rules(autocorrect = false, doubleSpacePeriod = false, prose = false))
+        assertEquals("a,b", text.toString())
+    }
+
     @Test fun nothingWhenSwitchedOff() {
         type("i dont think teh cat", off)
         assertEquals("i dont think teh cat", text.toString())
@@ -91,7 +127,7 @@ class ComposerTest {
         assertEquals(true, composer.backspace())          // the word and its space
         assertEquals("Hello world ", text.toString())
         type("!")                                        // world's own space is still the swipe's
-        assertEquals("Hello world!", text.toString())
+        assertEquals("Hello world! ", text.toString())
         // At the start of the text, or after a space or an opening bracket: no space in front.
         text.setLength(0); composer.reset()
         composer.swipe("one", on); type("("); composer.swipe("two", on)
@@ -111,7 +147,7 @@ class ComposerTest {
         type("See you"); composer.swipe("soon", on); type(".")
         assertEquals("See you soon. ", text.toString())
         type("?")
-        assertEquals("See you soon.? ".dropLast(1), text.toString())
+        assertEquals("See you soon.? ", text.toString())
     }
 
     @Test fun backspaceAfterASwipeTakesItsLeadingSpaceToo() {

@@ -43,8 +43,7 @@ class SetupActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
             setTextColor(ORANGE)
             gravity = Gravity.CENTER
         })
-        column.addView(note("The Palm Pre's keyboard. Switch it on, then choose it; " +
-            "both steps are in Android's own settings."))
+        column.addView(note("The Palm Pre's keyboard. Switch it on, then choose it."))
         column.addView(wideButton("1. Switch it on") { startActivity(Intent(AndroidSettings.ACTION_INPUT_METHOD_SETTINGS)) })
         column.addView(wideButton("2. Choose it") {
             (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).showInputMethodPicker()
@@ -58,7 +57,7 @@ class SetupActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
             val refresh = {
                 val s = Settings.read(this@SetupActivity)
                 text = if (s.languages.size == 1) "Typing in ${s.language.name}."
-                    else s.languages.joinToString(", ") { it.name } + ". Flick the space bar left or right to change."
+                    else s.languages.joinToString(", ") { it.name } + ". Flick the space bar to switch."
             }
             refreshers += refresh
             refresh()
@@ -68,35 +67,44 @@ class SetupActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
         column.addView(heading("Style"))
         column.addView(choices(Style.values().toList(), { if (it == Style.ORANGE) "Orange" else "White" },
             { Settings.read(this).style }) { v -> Settings.update(this) { it.copy(style = v) } })
-        column.addView(note("Or hold the globe on the Sym page to switch."))
+        column.addView(note("Or hold the globe on the Sym page."))
         column.addView(heading("Height"))
         column.addView(choices(Settings.Height.values().toList(), { it.label },
             { Settings.read(this).height }) { v -> Settings.update(this) { it.copy(height = v) } })
 
+        column.addView(heading("Keys"))
+        column.addView(toggle("Number row", "Digits always above the letters.",
+            { Settings.read(this).numberRow }) { v -> Settings.update(this) { it.copy(numberRow = v) } })
+        // Its sub-switch, set in under it and greyed out while the number row is off.
+        val hideDigits = toggle("Hide digits on the letters", "No digits printed on E R T, D F G, X C V and @.",
+            { Settings.read(this).hideKeyDigits }) { v -> Settings.update(this) { it.copy(hideKeyDigits = v) } }
+        hideDigits.setPadding(unit * 2, hideDigits.paddingTop, 0, hideDigits.paddingBottom)
+        column.addView(hideDigits)
+        val dimDigits = {
+            val on = Settings.read(this).numberRow
+            hideDigits.alpha = if (on) 1f else 0.45f
+            setEnabledAll(hideDigits, on)
+        }
+        refreshers += dimDigits
+        dimDigits()
+        column.addView(toggle("Lowercase letters", "Capitals only while shift is on.",
+            { Settings.read(this).lowercase }) { v -> Settings.update(this) { it.copy(lowercase = v) } })
+
         column.addView(heading("Typing"))
-        column.addView(toggle("Autocorrect", "Fixes typos and puts the apostrophe in contractions " +
-            "(dont → don't). A corrected word is underlined in orange: tap it to switch back to what you " +
-            "typed, then hold it to add that to your dictionary. Backspace straight after a correction undoes it.",
+        column.addView(toggle("Autocorrect", "Fixes typos as you type. Tap an underlined word to undo it.",
             { Settings.read(this).autocorrect }) { v -> Settings.update(this) { it.copy(autocorrect = v) } })
-        column.addView(toggle("Double-space period", "Two quick spaces after a word type \". \".",
+        column.addView(toggle("Double-space period", "Two quick spaces type \". \".",
             { Settings.read(this).doubleSpacePeriod }) { v -> Settings.update(this) { it.copy(doubleSpacePeriod = v) } })
-        column.addView(toggle("Suggestion bar", "Three words above the keys as you type, the likeliest " +
-            "in the middle in orange. Tap one to use it. Always on with swipe to type or emoji suggestions.",
+        column.addView(toggle("Suggestion bar", "Word suggestions above the keys.",
             { Settings.read(this).suggestions }, forcedOn = { Settings.read(this).let { it.swipe || it.emojiSuggestions } })
             { v -> Settings.update(this) { it.copy(suggestions = v) } })
-        column.addView(toggle("Swipe to type", "Slide across the letters and lift at the end of the word. " +
-            "Backspace straight after takes the whole word. Shows the suggestion bar too, with the " +
-            "other guesses.",
+        column.addView(toggle("Swipe to type", "Slide across the letters to spell a word.",
             { Settings.read(this).swipe }) { v -> Settings.update(this) { it.copy(swipe = v) } })
-        column.addView(toggle("Emoji suggestions", "The suggestion bar's right-hand place shows an " +
-            "emoji for the word, when there is one (pizza → 🍕). Tap it to swap the word for the emoji. " +
-            "Shows the suggestion bar too.",
+        column.addView(toggle("Emoji suggestions", "Offers an emoji for the word (pizza → 🍕).",
             { Settings.read(this).emojiSuggestions }) { v -> Settings.update(this) { it.copy(emojiSuggestions = v) } })
-        column.addView(toggle("Hold for more", "Press and hold a key for its accents and extra " +
-            "symbols (é, ñ, curly quotes, £, ½…). Keys that have them show a small dot. Hold the " +
-            "orange key to switch it on or off from the keyboard.",
+        column.addView(toggle("Hold for more", "Hold a dotted key for accents and symbols.",
             { Settings.read(this).holdForMore }) { v -> Settings.update(this) { it.copy(holdForMore = v) } })
-        column.addView(toggle("Vibrate on keys", "A tap of the vibrator as each key goes down, as strong as chosen below.",
+        column.addView(toggle("Vibrate on keys", "A light buzz on each key.",
             { Settings.read(this).vibrate }) { v -> Settings.update(this) { it.copy(vibrate = v) } })
         // Its strength, felt as it is chosen; greyed out while vibration is off.
         val strength = choices((1..Haptics.LEVELS).toList(), { listOf("Light", "Firmer", "Strong")[it - 1] },
@@ -108,17 +116,15 @@ class SetupActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
         val dim = { strength.alpha = if (Settings.read(this).vibrate) 1f else 0.45f }
         refreshers += dim
         dim()
-        column.addView(toggle("Sound on keys", "A click as each key goes down. Quiet while the phone " +
-            "is on silent or vibrate.",
+        column.addView(toggle("Sound on keys", "A click on each key.",
             { Settings.read(this).sound }) { v -> Settings.update(this) { it.copy(sound = v) } })
 
         column.addView(heading("Dictionary"))
-        column.addView(note("Words you added by holding them in the suggestion bar, or kept by tapping them as typed in the bar."))
+        column.addView(note("Words you've added."))
         column.addView(wideButton("Edit dictionary") { startActivity(Intent(this, DictionaryActivity::class.java)) })
 
         column.addView(heading("Updates"))
-        column.addView(note("Version ${Updater.installedVersion(this)}. The keyboard looks for a new " +
-            "release once a day and says so above the keys; tap the notice to see what's new and install it."))
+        column.addView(note("Version ${Updater.installedVersion(this)}. Checks daily."))
         column.addView(wideButton("Check now") { checkForUpdate(it) })
 
         val tryIt = EditText(this).apply {
@@ -241,6 +247,12 @@ class SetupActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
         refreshers += refresh
         refresh()
         return box
+    }
+
+    /** [v] and everything in it takes touches, or none does. */
+    private fun setEnabledAll(v: View, on: Boolean) {
+        v.isEnabled = on
+        if (v is android.view.ViewGroup) for (i in 0 until v.childCount) setEnabledAll(v.getChildAt(i), on)
     }
 
     /** Asks GitHub now: the update popup if there is something newer, a word on the button if not. */

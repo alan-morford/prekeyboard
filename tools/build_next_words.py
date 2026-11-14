@@ -55,7 +55,8 @@ def usable(k):
     if lang == "de":
         return k not in english_names
     # A capitalised dictionary word is a name, except I and its contractions.
-    return w[0].islower() or k == "i" or k.startswith("i'")
+    # Arabic and Hebrew have no capitals: no word there looks like a name.
+    return not w[0].isupper() or k == "i" or k.startswith("i'")
 
 if lang == "en":
     TOKEN = re.compile(r"[A-Za-z]+(?:['’][A-Za-z]+)*|[.!?]+|,|[;:]|[^\sA-Za-z]")
@@ -89,11 +90,13 @@ if True:
         prev = "<s>"
         for t in TOKEN.findall(parts[2]):
             t = t.replace("’", "'")
-            if lang != "en" and "'" in t and len(t) > 1:
+            # An elided word ("l'", "dell'") is dropped from the front; Ukrainian's apostrophe
+            # is inside its words (п'ять).
+            if lang in ("fr", "it") and "'" in t and len(t) > 1:
                 t = t.split("'")[-1]
-            if t[0] in ".!?":
+            if t[0] in ".!?؟":
                 prev = "<s>"
-            elif t == ",":
+            elif t in (",", "،"):
                 prev = "<,>"
             elif t[0].isalpha():
                 k = t.lower()

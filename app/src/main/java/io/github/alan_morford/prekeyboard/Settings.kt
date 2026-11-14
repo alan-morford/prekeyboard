@@ -24,6 +24,12 @@ data class Settings(
     val vibrateLevel: Int = 1,
     /** A click as each key goes down. */
     val sound: Boolean = false,
+    /** The letters print in lowercase while shift is off, capitals only when it is on. */
+    val lowercase: Boolean = false,
+    /** A row of digits over the letters, always there. */
+    val numberRow: Boolean = false,
+    /** With the number row, the digits printed on E R T, D F G, X C V and @ are left off. */
+    val hideKeyDigits: Boolean = false,
     /** The languages checked in the Languages screen, in its order: a flick on the space bar goes through them. */
     val languages: List<Language> = listOf(Language.EN_US),
     /** The one typed in now, always one of [languages]. */
@@ -57,6 +63,9 @@ data class Settings(
                 vibrate = p.getBoolean("vibrate", d.vibrate),
                 vibrateLevel = p.getInt("vibrateLevel", d.vibrateLevel).coerceIn(1, Haptics.LEVELS),
                 sound = p.getBoolean("sound", d.sound),
+                lowercase = p.getBoolean("lowercase", d.lowercase),
+                numberRow = p.getBoolean("numberRow", d.numberRow),
+                hideKeyDigits = p.getBoolean("hideKeyDigits", d.hideKeyDigits),
             ).let { s ->
                 // The screen's order, whatever order they were checked in; never none.
                 val ids = (p.getString("languages", null) ?: "").split(',')
@@ -73,6 +82,8 @@ data class Settings(
                 .putBoolean("suggestions", s.suggestions).putBoolean("swipe", s.swipe)
                 .putBoolean("holdForMore", s.holdForMore).putBoolean("emojiSuggestions", s.emojiSuggestions)
                 .putBoolean("vibrate", s.vibrate).putInt("vibrateLevel", s.vibrateLevel).putBoolean("sound", s.sound)
+                .putBoolean("lowercase", s.lowercase).putBoolean("numberRow", s.numberRow)
+                .putBoolean("hideKeyDigits", s.hideKeyDigits)
                 .putString("languages", s.languages.joinToString(",") { it.id })
                 .putString("language", s.language.id)
                 .apply()

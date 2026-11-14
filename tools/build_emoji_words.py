@@ -118,8 +118,12 @@ FAVOURITES_BY_LANG = {
            "no": "👎", "gatto": "🐱", "cane": "🐶", "bacio": "😘", "baci": "😘", "festa": "🥳",
            "macchina": "🚗", "casa": "🏠", "sole": "☀️", "ahah": "😂", "triste": "😢", "felice": "😊",
            "compleanno": "🎂", "ciao": "👋"},
+    "nl": {"hart": "❤️", "liefde": "❤️", "bier": "🍺", "wijn": "🍷", "dank": "🙏", "bedankt": "🙏",
+           "ja": "👍", "nee": "👎", "kat": "🐱", "hond": "🐶", "kus": "😘", "kusjes": "😘", "feest": "🥳",
+           "auto": "🚗", "huis": "🏠", "zon": "☀️", "haha": "😂", "verdrietig": "😢", "blij": "😊",
+           "gelukkig": "😊", "verjaardag": "🎂", "hallo": "👋", "hoi": "👋", "doei": "👋"},
 }
-for word, e in (FAVOURITES if lang == "en" else FAVOURITES_BY_LANG[lang]).items():
+for word, e in (FAVOURITES if lang == "en" else FAVOURITES_BY_LANG.get(lang, {})).items():
     if e in order:
         best.setdefault(word, {})[e] = -1
 

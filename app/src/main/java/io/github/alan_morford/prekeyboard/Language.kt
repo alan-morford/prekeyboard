@@ -9,6 +9,22 @@ enum class Layout(val rows: List<String>) {
     QWERTZ(listOf("qwertzuiop", "asdfghjkl", "yxcvbnm")),
     /** French: A and Q, Z and W change places; M stays on the bottom row, as on BlackBerry's AZERTY. */
     AZERTY(listOf("azertyuiop", "qsdfghjkl", "wxcvbnm")),
+
+    // From LuneOS's keyboard (webos-keyboard's phone layouts): a language's own letters at the
+    // ends of the rows, which then hold more keys than the Pre's ten, nine and seven.
+    CZECH(listOf("qwertzuiopú", "asdfghjklů", "yxcvbnm")),
+    DANISH(listOf("qwertyuiopå", "asdfghjklæø", "zxcvbnm")),
+    NORWEGIAN(listOf("qwertyuiopå", "asdfghjkløæ", "zxcvbnm")),
+    /** Swedish and Finnish. */
+    SWEDISH(listOf("qwertyuiopå", "asdfghjklöä", "zxcvbnm")),
+    HUNGARIAN(listOf("qwertzuiopőú", "asdfghjkléáű", "íyxcvbnm")),
+    POLISH(listOf("qwertyuiopż", "asdfghjklłą", "zxcvbnmę")),
+    PORTUGUESE(listOf("qwertyuiop", "asdfghjklç", "zxcvbnm")),
+    RUSSIAN(listOf("йцукенгшщзх", "фывапролджэ", "ячсмитьбю")),
+    UKRAINIAN(listOf("йцукенгшщзхї", "фівапролджє", "ячсмитьбю")),
+    ARABIC(listOf("ضصثقفغعهخحج", "شسيبلاتنمكد", "ئءؤرىةوزظ")),
+    /** Hebrew, with the standard keyboard's / and ' where Q and W are. */
+    HEBREW(listOf("/'קראטוןםפ", "שדגכעיחלךף", "זסבהנמצת")),
 }
 
 /**
@@ -45,6 +61,13 @@ class Language(
      * word after the apostrophe is the one looked up, corrected and learned.
      */
     val elisions: Set<String> = emptySet(),
+    /**
+     * Typed as pinyin: the letters spell out the sound, and the suggestion bar offers the
+     * characters for it ([Pinyin]). No dictionary of words, autocorrect or swiping.
+     */
+    val pinyin: Boolean = false,
+    /** Punctuation written the language's own way: Arabic's comma ، and question mark ؟. */
+    val punctuation: Map<String, String> = emptyMap(),
 ) {
     val english get() = id.startsWith("en")
 
@@ -63,8 +86,12 @@ class Language(
     val dictionaries: List<String> get() =
         if (english && dictionaryDir != null) listOf(DICTIONARY, asset(DICTIONARY)) else listOf(asset(DICTIONARY))
 
-    /** Whether there is a file [name] for this language (contractions are English only). */
-    fun has(name: String) = name != CONTRACTIONS || english
+    /** Whether there is a file [name] for this language (contractions are English only; pinyin has its own). */
+    fun has(name: String) = when {
+        pinyin -> name == PINYIN
+        name == CONTRACTIONS -> english
+        else -> name != PINYIN
+    }
 
     /** [letter]'s accented forms in this language ("e": é è ê ë), commonest first. */
     fun accentsOf(letter: Char): String = accents.filter { base(it) == letter }
@@ -89,6 +116,7 @@ class Language(
         const val NEXT_WORDS = "next_words.txt"
         const val EMOJI_WORDS = "emoji_words.txt"
         const val CONTRACTIONS = "contractions.txt"
+        const val PINYIN = "pinyin.txt"
 
         val EN_US = Language("en_US", "English (US)", "English (US)", "en-US", Layout.QWERTY, null, null)
 
@@ -110,15 +138,35 @@ class Language(
                 elisions = setOf("l", "d", "dell", "all", "dall", "nell", "sull", "coll", "un",
                     "c", "quest", "quell", "bell", "sant", "tutt", "senz", "anch", "cos", "dov",
                     "com", "nient", "s", "m", "t", "v", "n")),
+            Language("nl", "Nederlands", "Nederlands", "nl-NL", Layout.QWERTY, "nl", "nl",
+                accents = "éëïöüèáó"),
+            Language("zh", "中文（简体）", "中文", "zh-CN", Layout.QWERTY, "zh", "zh", pinyin = true),
+            // Those LuneOS's keyboard has, on its layouts.
+            Language("cs", "Čeština", "Čeština", "cs-CZ", Layout.CZECH, "cs", "cs", accents = "ěščřžýáíéúůťďň"),
+            Language("da", "Dansk", "Dansk", "da-DK", Layout.DANISH, "da", "da", accents = "åéæø"),
+            Language("fi", "Suomi", "Suomi", "fi-FI", Layout.SWEDISH, "fi", "fi", accents = "äöåšž"),
+            Language("hu", "Magyar", "Magyar", "hu-HU", Layout.HUNGARIAN, "hu", "hu", accents = "áéíóöőúüű"),
+            Language("no", "Norsk (bokmål)", "Norsk", "nb-NO", Layout.NORWEGIAN, "no", "no", accents = "åøæéèêóòô"),
+            Language("pl", "Polski", "Polski", "pl-PL", Layout.POLISH, "pl", "pl", accents = "ąćęłńóśźż"),
+            Language("pt", "Português (Brasil)", "Português", "pt-BR", Layout.PORTUGUESE, "pt", "pt", accents = "ãçáéíóúâêôàõü"),
+            Language("sv", "Svenska", "Svenska", "sv-SE", Layout.SWEDISH, "sv", "sv", accents = "åäöé"),
+            Language("ru", "Русский", "Русский", "ru-RU", Layout.RUSSIAN, "ru", "ru", accents = "ё"),
+            Language("uk", "Українська", "Українська", "uk-UA", Layout.UKRAINIAN, "uk", "uk"),
+            Language("ar", "العربية", "العربية", "ar", Layout.ARABIC, "ar", "ar", accents = "أإآ",
+                punctuation = mapOf("," to "،", "?" to "؟", ";" to "؛")),
+            Language("he", "עברית", "עברית", "he-IL", Layout.HEBREW, "he", "he"),
         )
 
         fun byId(id: String?): Language? = ALL.firstOrNull { it.id == id }
 
-        /** [c] without its accent: é -> e, ß -> s; anything else as it is. */
+        /** [c] without its accent: é -> e, ß -> s, ł -> l; anything else as it is. */
         fun base(c: Char): Char {
             if (c < 'À') return c
             if (c == 'ß') return 's'
             if (c == 'œ' || c == 'æ') return if (c == 'œ') 'o' else 'a'
+            if (c == 'ł') return 'l'
+            // Letters of their own, though Unicode writes them as и and і with a mark: й, ї.
+            if (c == 'й' || c == 'Й' || c == 'ї' || c == 'Ї') return c
             val d = Normalizer.normalize(c.toString(), Normalizer.Form.NFD)
             return d.firstOrNull()?.takeIf { d.length > 1 || it != c } ?: c
         }

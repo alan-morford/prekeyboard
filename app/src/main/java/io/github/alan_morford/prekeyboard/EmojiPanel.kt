@@ -103,7 +103,8 @@ class EmojiPanel(private val context: Context, private val view: KeyboardView, t
      * three rows of keys, [bar] the bottom row.
      */
     fun layout(top: Float, rows: RectF, bar: RectF) {
-        val h = Math.round(rows.height() * 0.2f).toFloat()
+        // A little taller than two thirds of a row: room for a search field big enough to read.
+        val h = Math.round(bar.height() * 0.68f).toFloat()
         strip = RectF(rows.left, top, rows.right, top + h)
         grid = RectF(rows.left, strip.bottom, rows.right, rows.bottom)
         mediaGrid = RectF(rows.left, strip.bottom, rows.right, bar.bottom)
@@ -112,25 +113,41 @@ class EmojiPanel(private val context: Context, private val view: KeyboardView, t
         relayout()
     }
 
-    // The strip: ABC, three tabs, then the search field.
-    private fun abcRect(): RectF {
-        val pad = 2 * dp
-        return RectF(strip.left + pad, strip.top + pad, strip.left + Math.min(strip.width() * 0.15f, 72 * dp), strip.bottom - pad)
+    // The strip: ABC, three tabs, then the search field, all on the strip's centre line. The
+    // tabs are as wide as their labels and a gap, so the search field gets the rest, and it
+    // ends as far from the right edge as ABC starts from the left. Nothing moves between tabs.
+    private fun edge() = 6 * dp
+    private fun gap() = Math.min(12 * dp, strip.width() * 0.025f)
+    /** ABC and the search field: the strip's height less a little above and below. */
+    private fun itemTop() = strip.top + 3 * dp
+    private fun itemBottom() = strip.bottom - 3 * dp
+    private fun abcRect(): RectF =
+        RectF(strip.left + edge(), itemTop(), strip.left + edge() + Math.min(strip.width() * 0.14f, 64 * dp), itemBottom())
+    /** The tabs' labels' size. */
+    private fun tabText() = (itemBottom() - itemTop()) * 0.5f
+    private fun tabWidth(i: Int): Float {
+        label.textSize = tabText()
+        val inner = when (Tab.values()[i]) {
+            Tab.EMOJI -> label.measureText("Emoji")
+            Tab.GIF -> label.measureText("GIF")
+            Tab.STICKER -> (itemBottom() - itemTop()) * 0.62f
+        }
+        return inner + 2 * gap()
     }
-    private fun tabWidth() = Math.min(strip.width() * 0.15f, 70 * dp)
-    private fun topTab(i: Int): RectF {
-        val l = abcRect().right + 4 * dp
-        return RectF(l + i * tabWidth(), strip.top, l + (i + 1) * tabWidth(), strip.bottom)
+    internal fun topTab(i: Int): RectF {
+        var l = abcRect().right + gap() / 2
+        for (j in 0 until i) l += tabWidth(j)
+        return RectF(l, strip.top, l + tabWidth(i), strip.bottom)
     }
-    private fun searchRect(): RectF {
-        val pad = strip.height() * 0.16f
-        return RectF(topTab(2).right + 8 * dp, strip.top + pad, strip.right - 8 * dp, strip.bottom - pad)
-    }
+    private fun searchRect(): RectF =
+        RectF(topTab(2).right + gap() / 2, itemTop(), strip.right - edge(), itemBottom())
     private fun clearRect(): RectF { val s = searchRect(); return RectF(s.right - s.height() * 1.4f, s.top, s.right, s.bottom) }
 
     private fun relayout() {
         if (grid.width() <= 0) return
-        cols = Math.max(6, (grid.width() / (grid.height() / 3.2f)).toInt())
+        // Emoji about three quarters of a row high, however many rows the page has (five with
+        // the number row): a taller page shows more lines, not bigger emoji.
+        cols = Math.max(6, (grid.width() / (bar.height() * 0.75f)).toInt())
         cell = grid.width() / cols
         val lineH = cellHeight()
         starts = FloatArray(categories.size)
@@ -223,11 +240,11 @@ class EmojiPanel(private val context: Context, private val view: KeyboardView, t
             label.color = Color.WHITE
             label.alpha = if (on) 255 else 130
             when (t) {
-                Tab.STICKER -> painter.icon(c, Painter.Icon.STICKER, r.centerX(), r.centerY(), r.height() * 0.58f,
+                Tab.STICKER -> painter.icon(c, Painter.Icon.STICKER, r.centerX(), r.centerY(), (itemBottom() - itemTop()) * 0.62f,
                     Color.argb(if (on) 255 else 130, 255, 255, 255))
                 else -> {
                     val s = if (t == Tab.EMOJI) "Emoji" else "GIF"
-                    label.textSize = Math.min(r.height() * 0.42f, r.width() * 0.3f)
+                    label.textSize = tabText()
                     c.drawText(s, r.centerX() - label.measureText(s) / 2, r.centerY() + label.textSize * 0.36f, label)
                 }
             }
@@ -250,7 +267,7 @@ class EmojiPanel(private val context: Context, private val view: KeyboardView, t
         val iconSize = s.height() * 0.56f
         painter.icon(c, Painter.Icon.SEARCH, s.left + s.height() * 0.6f, s.centerY(), iconSize, Color.argb(170, 255, 255, 255))
         val q = m.query
-        label.textSize = s.height() * 0.46f
+        label.textSize = s.height() * 0.5f
         label.alpha = if (q == null) 140 else 255
         val textLeft = s.left + s.height() * 1.1f
         val room = (if (q == null) s.right else clearRect().left) - textLeft - 4 * dp

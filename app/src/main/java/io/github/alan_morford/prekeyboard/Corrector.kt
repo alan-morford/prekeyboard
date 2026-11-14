@@ -182,9 +182,11 @@ class Corrector(lines: Sequence<String>, val lang: Language = Language.EN_US) {
         if (lower.length < 2 || '\'' in lower) return null
 
         val one = nearestScored(lower, 1).firstOrNull()
-        val two = split(lower)
-        val elided = elision(lower)
         val accented = accented(lower)
+        // One word that only lacks its accents is likelier than two run together ("ideeen" is
+        // "ideeën", not "idee en").
+        val two = if (accented != null) null else split(lower)
+        val elided = elision(lower)
         val best = listOfNotNull(one, two, elided, accented).maxByOrNull { it.second }?.first ?: return null
         return casedLike(typed, best).takeIf { it != typed }
     }

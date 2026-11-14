@@ -59,6 +59,7 @@ class KeyboardViewTest {
         override fun onRemoveWord(word: String) { removed += word }
         override fun onPaste() { pastes++ }
         override fun onLanguageFlick(step: Int) { flicks += step }
+        override fun onCandidate(i: Int) { candidatesPicked += i }
     }
     private lateinit var context: Context
 
@@ -66,6 +67,7 @@ class KeyboardViewTest {
     private var opened = 0
     private var pastes = 0
     private val flicks = ArrayList<Int>()
+    private val candidatesPicked = ArrayList<Int>()
     private val heldEvents = ArrayList<Boolean>()
     private val added = ArrayList<String>()
     private val removed = ArrayList<String>()
@@ -81,8 +83,8 @@ class KeyboardViewTest {
         EmojiPanel.lastTab = EmojiPanel.Tab.EMOJI
     }
 
-    private fun keyboard(style: Style = Style.ORANGE, hold: Boolean = true): KeyboardView {
-        Settings.write(context, Settings(style, Settings.Height.MEDIUM, holdForMore = hold))
+    private fun keyboard(style: Style = Style.ORANGE, hold: Boolean = true, change: (Settings) -> Settings = { it }): KeyboardView {
+        Settings.write(context, change(Settings(style, Settings.Height.MEDIUM, holdForMore = hold)))
         val v = KeyboardView(context, host)
         // As the service does: settings changes reach the view while it shows.
         Settings.prefs(context).registerOnSharedPreferenceChangeListener(listener)
@@ -212,10 +214,15 @@ class KeyboardViewTest {
         letter(v, 'a')
         tap(v, 3, 9.7f)                            // the spacer right of Sym is Sym
         tap(v, 0, 0.5f); tap(v, 0, 9.5f); tap(v, 1, 1.5f); tap(v, 2, 2.5f)
-        tap(v, 3, 0.7f)                            // ABC
+        tap(v, 2, 0.5f)                            // \ where the globe was
+        tap(v, 1, 9.5f)                            // backspace, where it is on the letters
+        tap(v, 2, 9.5f)                            // Return, under it
+        tap(v, 3, 0.3f)                            // the spacer left of the globe is the globe
+        assertEquals(1, picked)
+        tap(v, 3, 9.7f)                            // the spacer right of ABC is ABC, where Sym was
         letter(v, 'b')
         tap(v, 1, 9.5f)                            // backspace
-        assertEquals("A10]°", typed.toString())
+        assertEquals("A10]°\n", typed.toString())
     }
 
     @Test fun autoCapsAndHoldForAccents() {
@@ -239,7 +246,7 @@ class KeyboardViewTest {
     @Test fun emojiPageGlobeAndSettingsLive() {
         val v = keyboard()
         tap(v, 3, 8.9f)                            // Sym
-        tap(v, 2, 0.5f)                            // globe: the picker, not the next keyboard
+        tap(v, 3, 1.2f)                            // globe: the picker, not the next keyboard
         assertEquals(1, picked)
         tap(v, 3, 2.2f)                            // the emoji key
         shot(v, "orange-emoji")
@@ -262,11 +269,8 @@ class KeyboardViewTest {
 
     /** The middle of the [i]th tab along the top of the emoji page (0 Emoji, 1 GIF, 2 sticker). */
     private fun topTab(v: KeyboardView, i: Int): Pair<Float, Float> {
-        val dp = context.resources.displayMetrics.density
-        val left = Math.min(v.width * 0.15f, 72 * dp) + 4 * dp
-        val tab = Math.min(v.width * 0.15f, 70 * dp)
-        val rowH = (v.height - v.keyboardTop()) / 4.2f
-        return left + tab * (i + 0.5f) to v.keyboardTop() + rowH * 0.2f + rowH * 0.3f
+        val r = v.emoji.topTab(i)
+        return r.centerX() to r.centerY()
     }
 
     /** ABC, at the left of the emoji page's tabs. */
@@ -303,6 +307,111 @@ class KeyboardViewTest {
             i >= 10 -> keyTap(v, 1, i - 10 + 0.5f)
             else -> keyTap(v, 2, "zxcvbnm".indexOf(ch) + 1.5f)
         }
+    }
+
+    @Test fun numberRowStaysPutOnTheSymPage() {
+        val plain = keyboard().measuredHeight
+        val v = keyboard { it.copy(numberRow = true) }
+        assertEquals(true, v.measuredHeight > plain)
+        shot(v, "orange-letters-number-row")
+        keyTap(v, -1, 0.5f)                        // 1, above q
+        keyLetter(v, 'q')
+        keyTap(v, 3, 8.9f)                         // Sym
+        shot(v, "orange-symbols-number-row")
+        keyTap(v, -1, 1.5f)                        // 2, where it was
+        keyTap(v, 0, 1.5f)                         // the arrows' row, where q's was
+        keyTap(v, 1, 0.5f)                         // [
+        keyTap(v, 3, 8.9f)                         // ABC
+        keyLetter(v, 'w')
+        assertEquals("1q2→[w", typed.toString())
+        // The emoji page keeps the five rows' height.
+        val h = v.measuredHeight
+        keyTap(v, 3, 8.9f); keyTap(v, 3, 2.2f)
+        relayout(v)
+        assertEquals(h, v.measuredHeight)
+        shot(v, "orange-emoji-number-row")
+    }
+
+    @Test fun lowercaseLettersTillShift() {
+        val v = keyboard { it.copy(lowercase = true) }
+        shot(v, "orange-letters-lowercase")
+        keyTap(v, 3, 1.7f)                         // shift
+        shot(v, "orange-letters-lowercase-shift")
+        keyLetter(v, 'g'); keyLetter(v, 'g')
+        assertEquals("Gg", typed.toString())
+    }
+
+    /** A key on the number pad: [col] counted in its three columns. */
+    private fun padTap(v: KeyboardView, row: Int, col: Float) = keyTap(v, row, col * 10f / 3f)
+
+    @Test fun numberPadForFieldsOfNumbers() {
+        val letters = keyboard(hold = false).measuredHeight
+        val v = keyboard(hold = false)
+        v.padKind = Keymap.Pad.NUMBER
+        v.reset()
+        relayout(v)
+        assertEquals(true, v.measuredHeight <= letters)
+        shot(v, "orange-pad-pin")
+        padTap(v, 0, 0.5f); padTap(v, 1, 1.5f); padTap(v, 2, 2.5f); padTap(v, 3, 1.5f)   // 1 5 9 0
+        padTap(v, 3, 0.5f)                                                              // backspace
+        padTap(v, 3, 2.5f)                                                              // Return
+        assertEquals("159\n", typed.toString())
+
+        // A phone number: + held on the 0, even with "Hold for more" off, as on a dial pad.
+        typed.setLength(0)
+        v.padKind = Keymap.Pad.PHONE
+        v.reset()
+        shot(v, "orange-pad-phone")
+        val (x, y) = key(v, 3, 1.5f * 10f / 3f); val t = SystemClock.uptimeMillis()
+        touch(v, MotionEvent.ACTION_DOWN, x, y, t)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500))
+        val cell = (v.width / 10f * 0.92f).coerceAtLeast(34 * context.resources.displayMetrics.density)
+        touch(v, MotionEvent.ACTION_MOVE, x + cell, y - 10, t + 600)
+        touch(v, MotionEvent.ACTION_UP, x + cell, y - 10, t + 650)
+        padTap(v, 0, 0.5f)
+        assertEquals("+1", typed.toString())
+    }
+
+    @Test fun digitsLeftOffTheLettersWithTheNumberRow() {
+        val v = keyboard { it.copy(numberRow = true, hideKeyDigits = true) }
+        shot(v, "orange-letters-number-row-plain")
+        keyTap(v, 2, 0.5f)                         // orange
+        keyLetter(v, 'e')                          // no 1 on it now: just e
+        keyTap(v, 2, 0.5f)                         // orange again
+        keyLetter(v, 'y')                          // its ( is still there
+        assertEquals("e(", typed.toString())
+    }
+
+    @Test fun chineseCandidatesFillTheBar() {
+        val zh = Language.ALL.first { it.pinyin }
+        val v = keyboard { it.copy(languages = listOf(Language.EN_US, zh), language = zh) }
+        // In Chinese the bar is always there, so the keys don't jump as pinyin starts.
+        val bar = v.height - v.keyboardTop()
+        assertEquals(true, bar > keyboard().let { it.height - it.keyboardTop() })
+        val v2 = keyboard { it.copy(languages = listOf(Language.EN_US, zh), language = zh) }
+        v2.candidates = listOf("你好", "你", "拟好", "尼", "泥", "呢", "腻", "逆", "妮", "倪", "匿", "霓", "溺", "旎")
+        shot(v2, "orange-pinyin")
+        val dp = context.resources.displayMetrics.density
+        val barY = v2.keyboardTop() + 10 * dp
+        tapAt(v2, 20 * dp, barY)                   // the first candidate
+        assertEquals(listOf(0), candidatesPicked)
+        tapAt(v2, v2.width - 10 * dp, barY)        // the arrow: the next ones
+        shot(v2, "orange-pinyin-more")
+        tapAt(v2, 20 * dp, barY)
+        assertEquals(true, candidatesPicked.last() > 0)
+    }
+
+    @Test fun shotsOfLuneOsLanguages() {
+        for (id in listOf("da", "hu", "pl", "ru", "uk", "ar", "he")) {
+            val lang = Language.byId(id)!!
+            val v = keyboard { it.copy(languages = listOf(lang), language = lang) }
+            shot(v, "letters-$id")
+        }
+        // Their own letters type: å, at the top row's end in Danish.
+        val da = Language.byId("da")!!
+        val v = keyboard { it.copy(languages = listOf(da), language = da) }
+        tap(v, 0, 10f * 10.5f / 11f)
+        assertEquals("å", typed.toString())
     }
 
     @Test fun gifTabSearchTypesIntoTheSearchNotTheApp() {
@@ -357,10 +466,10 @@ class KeyboardViewTest {
         assertEquals(true, v.settings.holdForMore)
 
         tap(v, 3, 8.9f)                            // Sym
-        hold(v, 2, 0.5f, 700) { x, y, t -> touch(v, MotionEvent.ACTION_UP, x, y, t + 700) }
+        hold(v, 3, 1.2f, 700) { x, y, t -> touch(v, MotionEvent.ACTION_UP, x, y, t + 700) }
         assertEquals(Style.WHITE, v.settings.style)
         assertEquals(0, picked)            // the hold did not also open the picker
-        tap(v, 3, 0.7f)                            // ABC
+        tap(v, 3, 8.9f)                            // ABC, where Sym is
         shot(v, "white-after-hold")
 
         typed.setLength(0)
@@ -464,10 +573,10 @@ class KeyboardViewTest {
 
         tap(v, 3, 8.9f)                            // Sym
         shot(v, "orange-symbols-gear")
-        hold(v, 3, 8.9f, 700) { x, y, t -> touch(v, MotionEvent.ACTION_UP, x, y, t + 700) }
+        hold(v, 2, 9.5f, 700) { x, y, t -> touch(v, MotionEvent.ACTION_UP, x, y, t + 700) }
         assertEquals(1, opened)
         assertEquals(".", typed.toString())        // the hold did not also send Return
-        tap(v, 3, 0.7f)                            // ABC
+        tap(v, 3, 8.9f)                            // ABC, where Sym is
 
         "abc".forEach { letter(v, it) }
         hold(v, 1, 9.5f, 1000) { x, y, t -> touch(v, MotionEvent.ACTION_UP, x, y, t + 1000) }

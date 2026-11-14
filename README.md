@@ -11,9 +11,10 @@ it - in two styles:
 **Orange** prints the digits and the orange key in orange, as on the Pre. **White** prints
 everything white. Hold the globe on the Sym page to switch between them at any time.
 
-It types in **English** (US, UK, Canada and Australia), **French**, **German**, **Spanish** and
-**Italian**, each with its own keys (AZERTY for French, QWERTZ for German), dictionary and
-suggestions. Check the ones you use in the app, then flick the space bar left or right to
+It types in **English** (US, UK, Canada and Australia), **French**, **German**, **Spanish**,
+**Italian**, **Dutch**, **Portuguese**, **Czech**, **Polish**, **Hungarian**, **Danish**,
+**Norwegian**, **Swedish**, **Finnish**, **Russian**, **Ukrainian**, **Arabic** and **Hebrew**,
+each with its own keys, dictionary and suggestions, and in **Simplified Chinese** by pinyin. Check the ones you use in the app, then flick the space bar left or right to
 switch between them; see [Languages](#languages).
 
 It began as the "Pre (Orange)" and "Pre (White)" layouts of
@@ -26,9 +27,9 @@ TouchPad keyboard. It shares no code with either.
 - The Pre's layout key for key: four rows in matching columns, the orange key, Sym, and every
   key's alternate printed where the Pre printed it
 - Two styles, **Orange** and **White**: hold the globe on the Sym page to switch on the fly
-- **Languages**: English (US, UK, Canada, Australia), French, German, Spanish and Italian,
-  each with its own keys, words and suggestions; check the ones you use and flick the space
-  bar left or right to change
+- **Languages**: 21 of them, each with its own keys, words and suggestions, Simplified
+  Chinese by pinyin among them; check the ones you use and flick the space bar left or right
+  to change
 - **Swipe to type**, forgiving of quick, rough swipes, with the word you would get shown as
   you swipe, and the next likeliest guesses one tap away
 - **Suggestion bar**: three words above the keys, the likeliest in the middle in orange, and
@@ -52,7 +53,7 @@ TouchPad keyboard. It shares no code with either.
   showing what you typed, hold it to add that to your dictionary); backspacing into it puts
   back what you typed first
 - **Vibrate on keys** (light, firmer or strong) and **Sound on keys**, if you like: a tap or a click as each key goes down
-- **Double-space period**, and a period that brings its own space
+- **Double-space period**, and punctuation that brings its own space
 - **Emoji**: every emoji your phone can draw, by category, with your recent ones first
 - **Hold for more**: accents and extra symbols on a long press, each such key marked with a
   dot (switch it on in the app, or hold the orange key)
@@ -74,8 +75,8 @@ TouchPad keyboard. It shares no code with either.
 - **Orange key**: tap, and the next key types its printed alternate (orange + E = 1). Double tap
   to lock it on; tap again to let go. **Shift** works the same way, and lights orange while
   the next letter will be a capital. Hold the orange key to turn **Hold for more** on or off.
-- **Sym** opens the digits and the symbols the letters page doesn't have: `[ ] { } < > ^ ~ | \`,
-  `` ` ° £ × ÷ ± ≠ ¡ ``, nothing repeated from the letters but the period. With Hold for more
+- **Sym** opens the digits and the symbols the letters page doesn't have: `[ ] { } < > ^ ~ |`,
+  `` \ ` ° £ × ÷ ± ≠ ¡ ``, nothing repeated from the letters but the period. With Hold for more
   on, hold a key for more still: curly quotes on `` ` ``, `« » ≤ ≥` on `<` and `>`,
   currencies on `£`, `√ ∞` on `÷`, superscripts and fractions on the digits, and on the
   letters page the long and short dashes `— –` on S. On the Sym page, `¬` is held on `|`, the
@@ -85,12 +86,19 @@ TouchPad keyboard. It shares no code with either.
 - **The bottom row** sits on the same grid as the keys above: shift and Sym the same size at
   either end, `@` one key wide under X with its `0` printed where the `7` is above it, then
   the space bar, and the period under I, K and M. The Sym page's bottom row matches it key for
-  key, so nothing moves under your thumb when the page changes: ABC where shift is, the
-  smiley where `@` is, the period (with its microphone) where the period is, Return where Sym
-  is. Hold that Return (the one with the gear) to open the Pre Keyboard app.
-- **Period**: it brings a space with it. Backspace straight after takes just the space; a
-  space typed out of habit isn't doubled; `?`, `,` or another period go against the word.
-  No space in numbers (`3.14`), web or email addresses, or fields that aren't for words.
+  key, so nothing moves under your thumb when the page changes: the globe where shift is, the
+  smiley where `@` is, the period (with its microphone) where the period is, and ABC where Sym
+  is, so the same spot takes you there and back. Backspace and Return keep their places too, at
+  the right-hand end of the middle rows. Hold the Sym page's Return (the one with the gear) to
+  open the Pre Keyboard app.
+- **Number pad**: a field that only takes numbers (a PIN, a code, an amount, a phone number,
+  a date) gets big digits three across, as on a phone's dial pad, in the style's colours,
+  with backspace, 0 and Return along the bottom. Whatever else the field can take is held on
+  the 0: `+ * #` for phone numbers, a minus or a decimal point, `/` and `:` for dates and times.
+- **Period** (and `, ; : ! ?`): it brings a space with it. Backspace straight after takes just
+  the space; a space typed out of habit isn't doubled; `?`, `,` or another period go against
+  the word, so `...` and `?!` stay together. No space in numbers (`3.14`, `1,000`, `10:30`),
+  web or email addresses (`https:`), or fields that aren't for words.
   It sits in the column of I, K and M, with a microphone in its corner.
 - **Speech input**: hold the period, on either page (a tap is always just a period). The
   microphone lights up in a white disc and the bar says "Listening…"; the words go into the
@@ -138,7 +146,9 @@ TouchPad keyboard. It shares no code with either.
 ## Languages
 
 **Choose languages** in the app opens a list to check: English (US), English (UK), English
-(Canada), English (Australia), Français, Deutsch, Español and Italiano. US English is checked
+(Canada), English (Australia), Français, Deutsch, Español, Italiano, Nederlands, 中文（简体）,
+Čeština, Dansk, Suomi, Magyar, Norsk (bokmål), Polski, Português (Brasil), Svenska, Русский,
+Українська, العربية and עברית. US English is checked
 at first. With more than one checked, a quick flick left or right on the space bar goes to the
 next one or back, in the list's order. The language's name lights up on the space bar as it
 changes, then stays there faintly, a shade off the key's black. Holding the space bar still
@@ -149,8 +159,14 @@ languages are its own.
 
 - **Keys**: French gets AZERTY and German QWERTZ, the layouts their typists know; the
   printed alternates stay where they are, so orange + the third key of the top row is still
-  `1`. On the French keys M stays on the bottom row, beside N. Spanish, Italian and the
-  Englishes are QWERTY. With Hold for more on, a language's own accents come first on each
+  `1`. On the French keys M stays on the bottom row, beside N. Spanish, Italian, Dutch,
+  Chinese and the Englishes are QWERTY. The languages from LuneOS's keyboard
+  ([webos-keyboard](https://github.com/webOS-ports/webos-keyboard)) take its layouts: their
+  own letters at the ends of the rows (`å æ ø`, `ö ä`, `ő ú é á ű`, `ż ł ą ę`, `ú ů`, `ç`),
+  ЙЦУКЕН for Russian and Ukrainian, and the standard Arabic and Hebrew keyboards. A row
+  with more letters than the Pre's shares its width among them; backspace, Return, the
+  orange key and the bottom row stay as they are. Keys past the Pre's own print no
+  alternate. Arabic's comma key types `،`, and `?` and `;` come out as `؟` and `؛`. With Hold for more on, a language's own accents come first on each
   key (`é è ê ë` on E in French, `ß` first on S in German, `ñ` on N in Spanish).
 - **Words**: each language has its own dictionary, next-word suggestions and emoji
   suggestions (`chat` → 🐈, `Bier` → 🍺). The Englishes differ only in spelling (`colour`,
@@ -162,7 +178,21 @@ languages are its own.
 - **German nouns** get their capital (`haus` → `Haus`).
 - **French and Italian elisions**: the apostrophe goes in (`cest` → `c'est`, `jai` → `j'ai`,
   `lanno` → `l'anno`), and in `l'hommme` the word after the apostrophe is the one corrected.
+- **Russian and Ukrainian**: `й` and `ї` are letters of their own, never "corrected" to `и`
+  and `і`; `ё` and `е` are both right in Russian. Ukrainian words keep their apostrophe
+  (`п'ять`). Swiping is for the Latin alphabets only.
+- **Dutch** puts its accents in too (`ideeen` → `ideeën`, `geinteresseerd` → `geïnteresseerd`).
 - **Contractions** (`dont` → `don't`) are English only.
+- **Simplified Chinese** is typed as pinyin, without tones (ü as `v`: `lv` for 绿). The
+  pinyin shows underlined in the field as you type, and the bar fills with the characters
+  and words it may be, the likeliest first in orange; the arrow at the bar's right shows more.
+  Tap one to put it in, or press space for the first. Type a whole phrase (`woaini`,
+  `jintiantianqihenhao`) and the first choice is all of it (我爱你, 今天天气很好); a choice
+  for only its start (你 for `nihao`) leaves the rest of the pinyin to go on with. Backspace
+  takes back a letter of the pinyin, and Return puts the pinyin in as letters. Punctuation
+  goes in as Chinese writes it (`，。？！：；`), except a point in a number. Characters you
+  pick come first for that pinyin next time, and a phrase you pick whole becomes a word.
+  There is no autocorrect, swiping or word list to edit in Chinese.
 - **Your own words** are kept per language (the Englishes share theirs); Edit dictionary shows
   one language at a time.
 - **Speech input** listens for the language being typed in.
@@ -175,6 +205,13 @@ the keyboard on screen.
 - **Languages**: which languages to type in (see above).
 - **Style**: Orange or White. Holding the globe on the Sym page switches it too.
 - **Height**: Small, Medium or Large rows.
+- **Number row**: the digits in a row of their own above the letters, always there. The Sym
+  page then keeps its digits in that same top row, with a row of arrows, ticks and signs
+  (`← → ↑ ↓ ↔ ✓ ✗ ★ ♥ ♪`) under them, so the pages are the same height and the digits don't move.
+  - **Hide digits on the letters**: with the number row on, the digits printed on E R T,
+    D F G, X C V and @ are left off (and the orange key types nothing else on them).
+- **Lowercase letters**: the keys show lowercase while shift is off, capitals while it's on.
+  Both sit on the same line in the same place, so only the letters' shapes change.
 - **Autocorrect** (on by default): fixes typos when you finish a word, and puts the apostrophe
   in contractions - `dont` becomes `don't`, `im` becomes `I'm`, a lone `i` becomes `I`. Words
   that are real words as they are (`well`, `were`, `its`, `ill`) are left alone, with the
@@ -309,13 +346,23 @@ python3 tools/build_next_words.py fra_sentences.tsv.bz2 app/src/main/assets/fr/d
     app/src/main/assets/fr/next_words.txt fr app/src/main/assets/dictionary.txt
 python3 tools/build_emoji_words.py annotations/fr.xml annotationsDerived/fr.xml app/src/main/assets/emoji.txt \
     app/src/main/assets/fr/dictionary.txt app/src/main/assets/fr/emoji_words.txt fr
+# The same for es, it, nl, cs, da, fi, hu, no, pl, pt (from pt_br), sv, ru, ar and he
+# (Tatoeba's spa, ita, nld, ces, dan, fin, hun, nob, pol, por, swe, rus, ara, heb; CLDR's
+# annotations by the same codes, Norwegian's as no). Ukrainian is checked against Russian,
+# not English, so the Russian in Ukrainian subtitles stays out:
+python3 tools/build_dictionary_lang.py uk uk_full.txt ukr_sentences.tsv.bz2 \
+    app/src/main/assets/ru/dictionary.txt app/src/main/assets/uk/dictionary.txt
+
+# Simplified Chinese: words by their pinyin, from CC-CEDICT and FrequencyWords' zh_cn.
+python3 tools/build_pinyin.py cedict_1_0_ts_utf-8_mdbg.txt.gz zh_cn_full.txt app/src/main/assets/zh/pinyin.txt
 ```
 
 (SCOWL from http://wordlist.aspell.net/, `en_50k.txt` and the other languages' `*_full.txt` from
 [FrequencyWords](https://github.com/hermitdave/FrequencyWords), and `emoji-test.txt` from
 https://unicode.org/Public/emoji/; the two `en.xml` from
 [CLDR](https://github.com/unicode-org/cldr), `common/annotations` and `common/annotationsDerived`;
-`eng_sentences.tsv.bz2` and the others from https://downloads.tatoeba.org/exports/per_language/.)
+`eng_sentences.tsv.bz2` and the others from https://downloads.tatoeba.org/exports/per_language/;
+CC-CEDICT from https://www.mdbg.net/chinese/dictionary?page=cedict.)
 The other languages' word lists keep a word that the subtitles use often, or that Tatoeba's
 sentences use too, and take its case from Tatoeba (German nouns); see
 `tools/build_dictionary_lang.py`.
