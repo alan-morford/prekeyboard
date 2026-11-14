@@ -967,11 +967,9 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         }
         val sw = composer.swiped
         val emojiOn = v.settings.emojiSuggestions
-        if (sw != null) {
-            val others = swipeGuesses.filter { it != sw }
-            withEmoji(listOf(others.getOrElse(0) { "" }, sw, others.getOrElse(1) { "" }), false, emojiOn)
-            return
-        }
+        // After a swipe, what may come next, as after a word and a space. A misread swipe is
+        // undone by backspace (the whole word) or put right by tapping the word.
+        if (sw != null) { show(predict() ?: emptyList(), verbatim = false, emoji = false); return }
         val typed = composer.currentWord()
         val typedAfter = composer.wordContext()
         val c = composer.corrector
@@ -1084,6 +1082,8 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         val at = barWord
         if (at != null) { replaceTapped(at, word); return }
         ownEdit()
+        // After a swipe the bar offers the next word: it goes after the swiped one, not in its place.
+        if (composer.swiped != null) composer.forget()
         val learn = i == 0 && barVerbatim && composer.corrector?.isKnown(word) == false
         composer.pick(word, learn)
         if (i == 2 && barEmoji) Settings.addRecentEmoji(this, word)

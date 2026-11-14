@@ -37,7 +37,7 @@ android {
         // The newest Android: no "built for an older version of Android" warning on install.
         targetSdk = 35
         versionCode = commitCount
-        versionName = "1.4.0"
+        versionName = "1.4.1"
         buildConfigField("String", "CRASH_EMAIL", "\"" + crashEmail.replace("\"", "") + "\"")
         buildConfigField("String", "KLIPY_KEY", "\"" + klipyKey.replace("\"", "") + "\"")
     }

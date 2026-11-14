@@ -31,7 +31,7 @@ TouchPad keyboard. It shares no code with either.
   Chinese by pinyin among them; check the ones you use and flick the space bar left or right
   to change
 - **Swipe to type**, forgiving of quick, rough swipes, with the word you would get shown as
-  you swipe, and the next likeliest guesses one tap away
+  you swipe, and the next word predicted after
 - **Suggestion bar**: three words above the keys, the likeliest in the middle in orange, and
   if you like, an emoji for the word on the right (`pizza` → 🍕)
 - **Next-word suggestions**: before you start a word, the bar offers the three likeliest next
@@ -135,9 +135,9 @@ TouchPad keyboard. It shares no code with either.
 - **Swipe** (when switched on): slide across the letters and lift at the end of the word. The
   word goes in with a space either side, so you can swipe or tap the next word straight away,
   and a period lands on the word. While you swipe, the bar shows the word you would
-  get if you lifted now, in orange; after, it offers the next likeliest
-  guesses, and tapping one swaps it in. Backspace straight after a swipe takes the whole word
-  and its space. Taps still type letters as usual, and the word before a swipe is corrected
+  get if you lifted now, in orange; after, it predicts the next word, as after a typed word
+  and a space. Backspace straight after a swipe takes the whole word and its space; tap a
+  swiped word in the text for other words it might have been. Taps still type letters as usual, and the word before a swipe is corrected
   as a space would correct it (a lone `i` becomes `I`). Swiping works in search boxes too.
   Quick swipes needn't be careful: corners cut short, a letter only passed near, or a start
   and finish a little off still find the word, and when two words fit the path about equally
