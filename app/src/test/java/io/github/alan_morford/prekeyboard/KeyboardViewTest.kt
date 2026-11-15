@@ -38,10 +38,14 @@ class KeyboardViewTest {
     private var progress = 0
     private val picks = ArrayList<Int>()
     private val pickCaps = ArrayList<Int>()
+    private val emojiWords by lazy {
+        java.io.File("src/main/assets/emoji_words.txt").bufferedReader().useLines { EmojiWords(it) { true } }
+    }
     private val host = object : KeyboardView.Host {
         override fun onText(text: String) { typed.append(text) }
         override fun onBackspace(word: Boolean) { if (typed.isNotEmpty()) typed.setLength(typed.length - 1) }
         override fun onEnter() { typed.append('\n') }
+        override fun emojiSearch(query: String) = emojiWords.search(query)
         override fun onPickKeyboard() { picked++ }
         override fun onCursor(dx: Int, dy: Int, select: Boolean) { moves.append(if (dx > 0) "R" else if (dx < 0) "L" else if (dy > 0) "D" else "U") }
         override fun onToggleStyle() { Settings.update(context) { it.copy(style = if (it.style == Style.ORANGE) Style.WHITE else Style.ORANGE) } }
@@ -453,6 +457,35 @@ class KeyboardViewTest {
         emojiAbc(v)
         keyLetter(v, 'q')
         assertEquals("q", typed.toString())
+    }
+
+    @Test fun emojiTabSearchesEmoji() {
+        val v = keyboard()
+        keyTap(v, 3, 8.9f)                         // Sym
+        keyTap(v, 3, 2.2f)                         // the emoji key
+        assertEquals(EmojiPanel.Tab.EMOJI, v.emoji.tab)
+        val (_, gy) = topTab(v, 0)
+        tapAt(v, v.width * 0.75f, gy)              // the search field
+        assertEquals("", v.searching)
+        relayout(v)
+        shot(v, "orange-emoji-search-empty")
+        "cat".forEach { keyLetter(v, it) }
+        keyTap(v, 2, 9.4f)                         // Return: back to the emoji, those for "cat"
+        assertEquals(null, v.searching)
+        relayout(v)
+        assertEquals(EmojiPanel.Tab.EMOJI, v.emoji.tab)
+        assertEquals("cat", v.emoji.emojiQuery)
+        shot(v, "orange-emoji-searched")
+        // The first one found, as the suggestion bar would offer it.
+        val top = v.keyboardTop() + (v.height - v.keyboardTop()) / 4.2f * 1.1f
+        tapAt(v, v.width / 20f, top)
+        assertEquals("🐱", typed.toString())
+        // Leaving the page puts the search away; the one just used leads the recent ones.
+        emojiAbc(v)
+        keyTap(v, 3, 8.9f); keyTap(v, 3, 2.2f)
+        assertEquals(null, v.emoji.emojiQuery)
+        tapAt(v, v.width / 20f, top)
+        assertEquals("🐱🐱", typed.toString())
     }
 
     @Test fun holdOrangeTogglesHoldGlobeSwitchesStyleAndHoldSpaceMovesTheCursor() {

@@ -25,4 +25,15 @@ class EmojiWordsTest {
         assertEquals("🐈", words { it != "🐱" }.forWord("cat"))
         assertEquals(null, words { false }.forWord("pizza"))
     }
+
+    @Test fun searchShowsEveryEmojiForTheWordThenTheWordsItStarts() {
+        val w = words()
+        val cat = w.search("cat")
+        assertEquals(listOf("🐱", "🐈", "😺"), cat.take(3))
+        assertEquals(true, cat.size > 3)
+        assertEquals(true, "🍕" in w.search("piz"))
+        assertEquals("❤️", w.search("Red heart").firstOrNull { it == "❤️" })
+        assertEquals(emptyList<String>(), w.search("  "))
+        assertEquals(emptyList<String>(), w.search("qqzzx"))
+    }
 }

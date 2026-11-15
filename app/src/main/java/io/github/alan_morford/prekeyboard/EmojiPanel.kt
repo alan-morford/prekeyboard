@@ -18,9 +18,13 @@ import android.widget.OverScroller
  * scrolls; a row of category tabs along the bottom, then backspace. Tapping a tab jumps to its
  * category, and the tab lights as you scroll.
  *
- * Along the top, where the suggestion bar was: ABC, then Emoji, GIF and a sticker. The other
- * two are KLIPY's ([MediaPanel]): there a "Search KLIPY" field follows the tabs, and the GIFs
- * take everything below, down to the bottom of the keys; ABC is the only key left.
+ * The first category is the ones used last, newest first.
+ *
+ * Along the top, where the suggestion bar was: ABC, then Emoji, GIF and a sticker, then a search
+ * field: "Search Emojis" finds them by the words the suggestion bar offers them for, all of
+ * them at once in the grid. The other two tabs are KLIPY's ([MediaPanel]): there the field says
+ * "Search KLIPY", and the GIFs take everything below, down to the bottom of the keys; ABC is the
+ * only key left.
  *
  * [KeyboardView] owns it, gives it the keys' area, and hands it every touch while it shows.
  */
@@ -30,8 +34,10 @@ class EmojiPanel(private val context: Context, private val view: KeyboardView, t
         fun emoji(e: String)
         fun backspace()
         fun letters()
-        /** The search field was tapped: type a search for [kind], starting from [query]. */
-        fun search(kind: Klipy.Kind, query: String?) {}
+        /** The search field was tapped: type a search for [tab], starting from [query]. */
+        fun search(tab: Tab, query: String?) {}
+        /** Every emoji for [query], likeliest first. */
+        fun findEmoji(query: String): List<String> = emptyList()
         /** A GIF or sticker was tapped, found by searching for [query] (null: trending). */
         fun media(kind: Klipy.Kind, item: Klipy.Item, query: String?) {}
     }
@@ -55,21 +61,39 @@ class EmojiPanel(private val context: Context, private val view: KeyboardView, t
         view.invalidate()
     }
 
-    /** A search was typed for [kind]: its tab, showing what was found. */
-    fun searched(kind: Klipy.Kind, q: String) {
-        select(if (kind == Klipy.Kind.GIF) Tab.GIF else Tab.STICKER)
-        media?.search(q)
+    /** A search was typed for [t]: its tab, showing what was found. */
+    fun searched(t: Tab, q: String) {
+        select(t)
+        val m = media
+        if (m != null) m.search(q) else searchEmoji(q.trim().ifEmpty { null })
     }
 
-    /** The page is going away: the GIFs stop moving. */
-    fun close() { gifs.close(); stickers.close() }
+    /** What the emoji grid shows searched for (null: every category), for the tests too. */
+    var emojiQuery: String? = null; private set
+    private var found: List<String> = emptyList()
+
+    private fun searchEmoji(q: String?) {
+        emojiQuery = q
+        found = if (q == null) emptyList() else actions.findEmoji(q)
+        scroller.forceFinished(true)
+        scrollY = 0f
+        relayout()
+        view.invalidate()
+    }
+
+    /** The page is going away: the GIFs stop moving, an emoji search is put away. */
+    fun close() { gifs.close(); stickers.close(); emojiQuery = null; found = emptyList() }
 
     /** A word for a moment over the GIFs or stickers. */
     fun say(kind: Klipy.Kind, s: String, ms: Long) = (if (kind == Klipy.Kind.GIF) gifs else stickers).say(s, ms)
 
     class Category(val id: String, val icon: String, val emoji: List<String>)
 
+    /** The bottom row's tabs. */
     private var categories: List<Category> = emptyList()
+    /** What the grid shows: the categories, or what was searched for. */
+    private val shown: List<Category> get() =
+        if (emojiQuery != null) listOf(Category("search", "🔍", found)) else categories
 
     /** Fills the page: every category is read once, the recent ones each time it opens. */
     fun open() {
@@ -150,9 +174,10 @@ class EmojiPanel(private val context: Context, private val view: KeyboardView, t
         cols = Math.max(6, (grid.width() / (bar.height() * 0.75f)).toInt())
         cell = grid.width() / cols
         val lineH = cellHeight()
-        starts = FloatArray(categories.size)
+        val cats = shown
+        starts = FloatArray(cats.size)
         var y = 0f
-        for ((i, c) in categories.withIndex()) {
+        for ((i, c) in cats.withIndex()) {
             starts[i] = y
             y += ((c.emoji.size + cols - 1) / cols) * lineH
         }
@@ -191,7 +216,16 @@ class EmojiPanel(private val context: Context, private val view: KeyboardView, t
         c.clipRect(grid)
         val lineH = cellHeight()
         emojiPaint.textSize = lineH * 0.62f
-        for ((ci, cat) in categories.withIndex()) {
+        val cats = shown
+        if (emojiQuery != null && found.isEmpty()) {
+            this.label.color = Color.WHITE; this.label.alpha = 140
+            this.label.textSize = lineH * 0.3f
+            var s = "No emoji for “$emojiQuery”"
+            while (s.length > 2 && this.label.measureText(s) > grid.width() - 32 * dp) s = s.dropLast(2) + "…"
+            c.drawText(s, grid.centerX() - this.label.measureText(s) / 2, grid.top + lineH * 0.6f, this.label)
+            this.label.alpha = 255
+        }
+        for ((ci, cat) in cats.withIndex()) {
             val top = grid.top + starts[ci] - scrollY
             val lines = (cat.emoji.size + cols - 1) / cols
             if (top > grid.bottom || top + lines * lineH < grid.top) continue
@@ -202,8 +236,8 @@ class EmojiPanel(private val context: Context, private val view: KeyboardView, t
                 emojiPaint.getTextBounds(e, 0, e.length, ink)
                 c.drawText(e, x + cell / 2 - ink.exactCenterX(), y + lineH / 2 - ink.exactCenterY(), emojiPaint)
             }
-            // A hairline between categories.
-            if (ci > 0) {
+            // A hairline between categories (none above the first with any emoji).
+            if (starts[ci] > 0) {
                 linePaint.color = Color.argb(70, 255, 255, 255)
                 c.drawRect(grid.left + 8 * dp, top - 0.5f * dp, grid.right - 8 * dp, top + 0.5f * dp, linePaint)
             }
@@ -249,29 +283,27 @@ class EmojiPanel(private val context: Context, private val view: KeyboardView, t
                 }
             }
             if (on) {
+                // At least as wide as the label, so "Emoji" is underlined like "GIF".
+                val half = Math.max(r.width() * 0.28f, r.width() / 2 - gap())
                 linePaint.color = lit
-                c.drawRoundRect(RectF(r.centerX() - r.width() * 0.28f, r.bottom - 3.5f * dp, r.centerX() + r.width() * 0.28f, r.bottom - 1.5f * dp), dp, dp, linePaint)
+                c.drawRoundRect(RectF(r.centerX() - half, r.bottom - 3.5f * dp, r.centerX() + half, r.bottom - 1.5f * dp), dp, dp, linePaint)
             }
         }
         label.alpha = 255
-        val m = media ?: run {
-            // A hairline under the strip, as between categories.
-            linePaint.color = Color.argb(70, 255, 255, 255)
-            c.drawRect(strip.left + 8 * dp, strip.bottom - 0.5f * dp, strip.right - 8 * dp, strip.bottom + 0.5f * dp, linePaint)
-            return
-        }
-        // The search field: "Search KLIPY", as KLIPY asks, or what was searched for and an x.
+        // The search field: "Search Emojis", or "Search KLIPY" as KLIPY asks, or what was
+        // searched for and an x.
         val s = searchRect()
         linePaint.color = if (pressed == SEARCH) Color.argb(70, 255, 255, 255) else Color.argb(38, 255, 255, 255)
         c.drawRoundRect(s, s.height() / 2, s.height() / 2, linePaint)
         val iconSize = s.height() * 0.56f
         painter.icon(c, Painter.Icon.SEARCH, s.left + s.height() * 0.6f, s.centerY(), iconSize, Color.argb(170, 255, 255, 255))
-        val q = m.query
+        val m = media
+        val q = if (m != null) m.query else emojiQuery
         label.textSize = s.height() * 0.5f
         label.alpha = if (q == null) 140 else 255
         val textLeft = s.left + s.height() * 1.1f
         val room = (if (q == null) s.right else clearRect().left) - textLeft - 4 * dp
-        var t = q ?: "Search KLIPY"
+        var t = q ?: if (m == null) "Search Emojis" else "Search KLIPY"
         while (t.length > 1 && label.measureText(t) > room) t = t.dropLast(2) + "…"
         c.drawText(t, textLeft, s.centerY() + label.textSize * 0.36f, label)
         label.alpha = 255
@@ -282,6 +314,7 @@ class EmojiPanel(private val context: Context, private val view: KeyboardView, t
     }
 
     private fun currentCategory(): Int {
+        if (emojiQuery != null) return -1
         var cur = 0
         for (i in starts.indices) if (starts[i] <= scrollY + 1 && categories[i].emoji.isNotEmpty()) cur = i
         // Scrolled to the very end: the last tab, even if its category is short.
@@ -310,7 +343,7 @@ class EmojiPanel(private val context: Context, private val view: KeyboardView, t
                 downIn = when {
                     strip.contains(x, y) -> when {
                         x < abcRect().right + 2 * dp -> ABC
-                        media != null && searchRect().contains(x, y) -> SEARCH
+                        searchRect().contains(x, y) -> SEARCH
                         else -> STRIP
                     }
                     media != null -> if (mediaGrid.contains(x, y)) GRID else NONE
@@ -338,11 +371,16 @@ class EmojiPanel(private val context: Context, private val view: KeyboardView, t
                     GRID -> if (dragging) fling() else media?.tap(downX, downY) ?: tapGrid(downX, downY)
                     ABC -> if (strip.contains(x, y) && x < abcRect().right + 2 * dp) actions.letters()
                     STRIP -> Tab.values().indices.firstOrNull { topTab(it).contains(x, y) }?.let { select(Tab.values()[it]) }
-                    SEARCH -> media?.let { m ->
-                        if (m.query != null && clearRect().contains(x, y)) m.search(null)
-                        else if (searchRect().contains(x, y)) actions.search(m.kind, m.query)
+                    SEARCH -> {
+                        val m = media
+                        val q = m?.query ?: emojiQuery.takeIf { m == null }
+                        if (q != null && clearRect().contains(x, y)) { if (m != null) m.search(null) else searchEmoji(null) }
+                        else if (searchRect().contains(x, y)) actions.search(tab, q)
                     }
-                    TABS -> if (media == null) (categories.indices).firstOrNull { tabRect(it).contains(x, y) }?.let { jumpTo(it) }
+                    TABS -> if (media == null) (categories.indices).firstOrNull { tabRect(it).contains(x, y) }?.let {
+                        if (emojiQuery != null) searchEmoji(null)
+                        jumpTo(it)
+                    }
                 }
                 end()
             }
@@ -389,7 +427,7 @@ class EmojiPanel(private val context: Context, private val view: KeyboardView, t
     private fun tapGrid(x: Float, y: Float) {
         val lineH = cellHeight()
         val contentY = y - grid.top + scrollY
-        for ((ci, cat) in categories.withIndex()) {
+        for ((ci, cat) in shown.withIndex()) {
             val lines = (cat.emoji.size + cols - 1) / cols
             if (contentY < starts[ci] || contentY >= starts[ci] + lines * lineH) continue
             val i = ((contentY - starts[ci]) / lineH).toInt() * cols + ((x - grid.left) / cell).toInt()

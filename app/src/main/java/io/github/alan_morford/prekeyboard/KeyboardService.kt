@@ -768,6 +768,9 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
 
     // --- GIFs and stickers ------------------------------------------------------------------
 
+    /** The emoji page's search: the same emoji the suggestion bar offers for words, all of them. */
+    override fun emojiSearch(query: String): List<String> = emojiWords?.search(query) ?: emptyList()
+
     /**
      * A GIF or sticker tapped on the emoji page: fetched, then handed to the app as a picture
      * (Android 7.1 and later, where the field says it takes one), or else its link typed in.

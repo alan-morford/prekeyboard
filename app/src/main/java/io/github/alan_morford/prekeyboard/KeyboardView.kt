@@ -78,6 +78,8 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         fun onLanguageFlick(step: Int) {}
         /** A GIF or sticker from KLIPY was tapped on the emoji page, found by searching for [query]. */
         fun onMedia(kind: Klipy.Kind, item: Klipy.Item, query: String?) {}
+        /** Every emoji for [query], searched for on the emoji page, likeliest first. */
+        fun emojiSearch(query: String): List<String> = emptyList()
         /** The [i]th of the [candidates] (characters for the pinyin typed) was tapped. */
         fun onCandidate(i: Int) {}
     }
@@ -240,7 +242,8 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
             override fun emoji(e: String) { host.onText(e) }
             override fun backspace() { host.onBackspace(false) }
             override fun letters() { show(Page.LETTERS) }
-            override fun search(kind: Klipy.Kind, query: String?) { startSearch(kind, query) }
+            override fun search(tab: EmojiPanel.Tab, query: String?) { startSearch(tab, query) }
+            override fun findEmoji(query: String) = host.emojiSearch(query)
             override fun media(kind: Klipy.Kind, item: Klipy.Item, query: String?) { host.onMedia(kind, item, query) }
         })
     }
@@ -257,18 +260,18 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         invalidate()
     }
 
-    // --- Searching KLIPY ---------------------------------------------------------------------
+    // --- Searching emoji and KLIPY ------------------------------------------------------------
 
     /**
-     * A search for GIFs or stickers is being typed: the letters show, and what they type goes
-     * into the search field drawn in the bar, not into the app. Return searches.
+     * A search for emoji, GIFs or stickers is being typed: the letters show, and what they type
+     * goes into the search field drawn in the bar, not into the app. Return searches.
      */
-    private var searchKind: Klipy.Kind? = null
+    private var searchKind: EmojiPanel.Tab? = null
     private val searchText = StringBuilder()
     /** The search being typed, for the tests. */
     internal val searching: String? get() = if (searchKind == null) null else searchText.toString()
 
-    private fun startSearch(kind: Klipy.Kind, query: String?) {
+    private fun startSearch(kind: EmojiPanel.Tab, query: String?) {
         barChange {
             searchKind = kind
             searchText.setLength(0)
@@ -278,7 +281,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         show(Page.LETTERS)
     }
 
-    /** Back to the GIFs or stickers: what was typed is searched for ([go]), or put away. */
+    /** Back to the emoji, GIFs or stickers: what was typed is searched for ([go]), or put away. */
     private fun endSearch(go: Boolean) {
         val kind = searchKind ?: return
         val q = searchText.toString()
@@ -921,7 +924,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
     /** Where the search's back arrow is, at the bar's left. */
     private fun searchBack(r: RectF) = RectF(r.left, r.top, r.left + r.height() * 1.3f, r.bottom)
 
-    /** The search being typed: a back arrow, then the field, "Search KLIPY" till something is typed. */
+    /** The search being typed: a back arrow, then the field, "Search Emojis" or "Search KLIPY" till something is typed. */
     private fun drawSearch(c: Canvas, r: RectF) {
         val back = searchBack(r)
         if (barPressed == 0) { barPaint.color = BAR_PRESSED; c.drawRect(back, barPaint) }
@@ -939,7 +942,7 @@ class KeyboardView(context: Context, private val host: Host) : View(context) {
         val typed = searchText.toString()
         if (typed.isEmpty()) {
             text.color = Color.WHITE; text.alpha = 130
-            c.drawText("Search KLIPY", left, baseline, text)
+            c.drawText(if (searchKind == EmojiPanel.Tab.EMOJI) "Search Emojis" else "Search KLIPY", left, baseline, text)
             text.alpha = 255
             barPaint.color = Style.ORANGE.accent
             c.drawRect(left - 1 * dp, field.top + field.height() * 0.22f, left + 1 * dp, field.bottom - field.height() * 0.22f, barPaint)

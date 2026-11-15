@@ -59,7 +59,8 @@ TouchPad keyboard. It shares no code with either.
 - **Vibrate on keys** (light, firmer or strong) and **Sound on keys**, if you like: a tap or a
   click as each key goes down
 - **Double-space period**, and punctuation that brings its own space
-- **Emoji**: every emoji your phone can draw, by category, with your recent ones first
+- **Emoji**: every emoji your phone can draw, by category, with your recent ones first, and
+  a search by word
 - **Hold for more**: accents and extra symbols on a long press, each such key marked with a
   dot (switch it on in the app, or hold the orange key)
 - **Cursor control**: hold the space bar and slide; with shift on, it selects
@@ -114,11 +115,13 @@ TouchPad keyboard. It shares no code with either.
   straight after the space go against the word and the space moves after them (`word ,` →
   `word, `).
 - **Emoji, GIFs and stickers**: the smiley opens a page with **ABC**, **Emoji**, **GIF** and a
-  sticker along the top. Emoji: every emoji your phone can draw, by category, with your recent
-  ones first; scroll the grid, or tap a category along the bottom. GIF and stickers: what's
-  trending on KLIPY, filling the whole keyboard, with **Search KLIPY** beside the tabs. Tap
-  the search and type on the letters (Return searches, the arrow goes back); tap × to clear
-  it. Tap a GIF or sticker to send it. Apps that take pictures from a keyboard (Android 7.1
+  sticker along the top, then a search field. Emoji: every emoji your phone can draw, by
+  category, with your recent ones first (those picked in the bar too); scroll the grid, or tap
+  a category along the bottom. **Search Emojis** shows every emoji for a word, as emoji
+  suggestions would offer them, and for the words it starts (`piz` → 🍕). GIF and stickers:
+  what's trending on KLIPY, filling the whole keyboard, with **Search KLIPY** beside the tabs.
+  Tap the search and type on the letters (Return searches, the arrow goes back); tap × to
+  clear it. Tap a GIF or sticker to send it. Apps that take pictures from a keyboard (Android 7.1
   and later) get the picture; others get its link. They move on Android 9 and later as they
   are, and before that as GIFs.
 - **Hold for more** (off at first; switch it on in the app, or hold the orange key): hold a
