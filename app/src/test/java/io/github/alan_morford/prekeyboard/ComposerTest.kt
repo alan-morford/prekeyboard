@@ -256,6 +256,28 @@ class ComposerTest {
         type("Note: (see)"); assertEquals("Note: (see)", text.toString())
     }
 
+    @Test fun aFaceOffersItsEmojiAndPickingItReplacesTheFace() {
+        type("hi :)")
+        assertEquals("🙂", composer.face()?.emoji)
+        composer.pickFace(composer.face()!!); assertEquals("hi 🙂 ", text.toString())
+        // With its space after it, and glued to a word.
+        text.setLength(0); composer.reset()
+        type("ok ;) "); assertEquals("😉", composer.face()?.emoji)
+        text.setLength(0); composer.reset()
+        type("hi:)"); assertEquals("🙂", composer.face()?.emoji)
+        text.setLength(0); composer.reset()
+        type("love <3"); assertEquals("❤️", composer.face()?.emoji)
+        // A face's letter still waiting: its emoji, put where the face would go.
+        text.setLength(0); composer.reset()
+        type("hi :D"); assertEquals("hi: D", text.toString())
+        composer.pickFace(composer.face()!!); assertEquals("hi 😃 ", text.toString())
+        // Not in a link, a word or a number.
+        for (t in listOf("https:/", "hi", "10:30", "XDR", "a: bo")) {
+            text.setLength(0); composer.reset()
+            type(t); assertEquals(t, null, composer.face())
+        }
+    }
+
     @Test fun pickingFromTheBar() {
         type("I like teh")
         assertEquals("teh", composer.currentWord())

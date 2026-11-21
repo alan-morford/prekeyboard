@@ -113,7 +113,7 @@ TouchPad keyboard. It shares no code with either.
   microphone. It uses the phone's own speech recogniser (Google's, on most phones).
 - **Punctuation after a space**: typed a space, then decided on a comma? `, . ? ! : ;` typed
   straight after the space go against the word and the space moves after them (`word ,` →
-  `word, `). Text faces stay as typed: `hi :)`, `;-)`, `:D`.
+  `word, `). Text faces stay as typed (`hi :)`, `;-)`, `:D`), and the bar offers each one's emoji on the right (`:)` → 🙂) to swap in.
 - **Emoji, GIFs and stickers**: the smiley opens a page with **ABC**, **Emoji**, **GIF** and a
   sticker along the top, then a search field. Emoji: every emoji your phone can draw, by
   category, with your recent ones first (those picked in the bar too); scroll the grid, or tap

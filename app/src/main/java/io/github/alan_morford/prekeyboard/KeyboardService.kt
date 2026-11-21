@@ -62,6 +62,8 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
     private var barVerbatim = false
     /** The bar's right-hand place holds an emoji for the word, not a word. */
     private var barEmoji = false
+    /** The bar's emoji is for the text face before the cursor, which it replaces. */
+    private var barFace: Emoticons.Face? = null
     private var emojiWords: EmojiWords? = null
     private var nextWords: NextWords? = null
     /** Backspace is down: the bar waits till it lets go, so deleting stays quick. */
@@ -984,6 +986,13 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         val typedAfter = composer.wordContext()
         val c = composer.corrector
         if (c == null) { show(emptyList(), verbatim = false, emoji = false); return }
+        // After a text face, its emoji on the right.
+        val face = if (emojiOn) composer.face() else null
+        if (face != null) {
+            show(listOf("", "", face.emoji), verbatim = false, emoji = true)
+            barFace = face
+            return
+        }
         if (typed.isEmpty()) { show(predict() ?: emptyList(), verbatim = false, emoji = false); return }
         // Looking a word up can take a good part of a second on an old tablet: do it on a
         // thread of its own, so typing never waits for it. The bar keeps what it shows till then.
@@ -1049,6 +1058,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
 
     private fun show(words: List<String>, verbatim: Boolean, emoji: Boolean) {
         swapOffered = false
+        barFace = null
         bar = List(3) { words.getOrElse(it) { "" } }
         barVerbatim = verbatim
         barEmoji = emoji
@@ -1096,6 +1106,12 @@ class KeyboardService : InputMethodService(), KeyboardView.Host,
         val at = barWord
         if (at != null) { replaceTapped(at, word); return }
         ownEdit()
+        val face = barFace
+        if (i == 2 && face != null) {
+            if (composer.pickFace(face)) Settings.addRecentEmoji(this, word)
+            refreshBar()
+            return
+        }
         // After a swipe, the left place swaps the swiped word; the others are next words, and
         // go after it.
         if (composer.swiped != null && !(i == 0 && swapOffered)) composer.forget()

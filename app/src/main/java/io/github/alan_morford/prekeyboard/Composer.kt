@@ -295,6 +295,27 @@ class Composer(private val field: Field, private val clock: () -> Long) {
         if (learn) { val own = Corrector.ownSpelling(word); corrector?.learn(own); onLearned(own) }
     }
 
+    /** The text face (":)") the cursor is just past, a space after it allowed, for the bar to offer its emoji. */
+    fun face(): Emoticons.Face? {
+        val after = field.after(1)
+        if (after.isNotEmpty() && !after[0].isWhitespace()) return null
+        // A face's letter still waiting ("hi: D", to be "hi :D"): its emoji, put where the face goes.
+        emoteFace?.let { (typed, face) ->
+            if (field.before(typed.length).toString() == typed)
+                return Emoticons.at(face)?.let { Emoticons.Face(typed.length, it.emoji, if (face[0] == ' ') " " else "") }
+        }
+        return Emoticons.at(field.before(8))
+    }
+
+    /** The face's emoji, picked in the bar, takes its place, with a space after it. */
+    fun pickFace(face: Emoticons.Face): Boolean {
+        val now = face() ?: return false
+        if (now.length != face.length || now.emoji != face.emoji) return false
+        reset()
+        field.batch { field.delete(face.length); field.commit(face.lead + face.emoji + " ") }
+        return true
+    }
+
     /**
      * The word the cursor is at the end of, as far as typed: "" when there is none, or when
      * the cursor is inside a word or the word is glued to something that isn't a word.
