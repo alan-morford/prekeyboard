@@ -15,6 +15,11 @@ package io.github.alan_morford.prekeyboard
  * punctuation typed straight after it still goes against the word, and the space moves to
  * after the punctuation: "word ," becomes "word, ".
  *
+ * A colon or semicolon may start an emoticon instead (":)", ";-)", ":D"): when the next key
+ * carries one on, the colon goes back where it was typed and its space goes, so "hi :)"
+ * stays "hi :)". A face's letter (":D") may as well start a word ("Note : Do"), so that
+ * waits for what ends it: a lone letter is a face. See [emoticon].
+ *
  * It works on a [Field] rather than on Android's InputConnection, so the tests can drive it
  * with a plain string.
  */
@@ -58,6 +63,25 @@ class Composer(private val field: Field, private val clock: () -> Long) {
     private var swipedOn: String? = null
     /** A word's last character and the space typed after it, while that space is the last thing typed. */
     private var spaceTail: String? = null
+    /**
+     * After a colon or semicolon that brought a space: what it was typed as (" :" when it
+     * snapped from after the owner's space, ":" when not), and whether any emoticon may
+     * follow or only one that can't start a phrase (after a word, "note: (see)" is prose).
+     */
+    private var emote: String? = null
+    private var emoteLoose = false
+    /** A face's letter typed after such a colon ("hi: D"), and what it becomes if the face ends there ("hi :D"). */
+    private var emoteFace: Pair<String, String>? = null
+
+    /** The face's letter ended there: the colon goes against it. */
+    private fun endFace() {
+        val (typed, face) = emoteFace ?: return
+        emoteFace = null
+        if (field.before(typed.length).toString() != typed) return
+        val after = field.after(1)
+        if (after.isNotEmpty() && after[0].isLetterOrDigit()) return
+        field.batch { field.delete(typed.length); field.commit(face) }
+    }
 
     /** Remembers the space just typed, if it follows a word, for punctuation to swap with. */
     private fun markSpace() {
@@ -77,14 +101,26 @@ class Composer(private val field: Field, private val clock: () -> Long) {
         return field.before(t.length).toString() == t
     }
 
-    fun reset() { last = null; swiped = null; autoTail = null; spaceTail = null; lastSpaceAt = Long.MIN_VALUE / 2 }
+    fun reset() { emoteFace = null; emote = null; last = null; swiped = null; autoTail = null; spaceTail = null; lastSpaceAt = Long.MIN_VALUE / 2 }
 
     /** Something typed on the keyboard. */
     fun type(text: String, rules: Rules) {
+        if (isSeparator(text) || text == "\n") endFace() else emoteFace = null
         val spaceAgain = text == " " && clock() - lastSpaceAt < DOUBLE_SPACE_MS
         val spaced = autoSpaced()
         val tail = spaceTail?.takeIf { spaceTyped() }
         val typedSpace = tail != null
+        val emoteFrom = emote?.takeIf { spaced }
+        emote = null
+        if (emoteFrom != null && text.length == 1 && emoteLoose && text[0] in EMOTE_LETTERS) {
+            emoteFace = "${emoteFrom.last()} $text" to emoteFrom + text
+        } else if (emoteFrom != null && text.length == 1 && emoticon(text[0], emoteLoose)) {
+            // ": )" was an emoticon: the colon back where it was typed, no space inside it.
+            field.batch { field.delete(2); field.commit(emoteFrom + text) }
+            autoTail = null; spaceTail = null; swiped = null; last = null
+            lastSpaceAt = Long.MIN_VALUE / 2
+            return
+        }
         autoTail = null
         spaceTail = null
         swiped = null
@@ -120,6 +156,12 @@ class Composer(private val field: Field, private val clock: () -> Long) {
                 autoTail = "$text "
                 after++
             }
+            if (autoTail != null && (text == ":" || text == ";")) {
+                emote = if (snap) " $text" else text
+                // Snapped, the owner typed it apart from the word; after a symbol (">:(") it's no phrase.
+                val prev = field.before(3).firstOrNull()
+                emoteLoose = snap || (prev != null && !prev.isLetterOrDigit())
+            }
         }
         fixed?.let { onCorrected(it.typed, it.fixed, after) }
         if (text == " ") markSpace()
@@ -146,6 +188,7 @@ class Composer(private val field: Field, private val clock: () -> Long) {
 
     /** Return is about to be sent: finish the word first. Return itself is the caller's to send. */
     fun beforeEnter(rules: Rules) {
+        endFace()
         last = null
         swiped = null
         lastSpaceAt = Long.MIN_VALUE / 2
@@ -190,7 +233,7 @@ class Composer(private val field: Field, private val clock: () -> Long) {
     }
 
     /** Anything else that moves on from the last correction (the cursor moved, say). */
-    fun forget() { last = null; swiped = null; autoTail = null; spaceTail = null }
+    fun forget() { emoteFace = null; emote = null; last = null; swiped = null; autoTail = null; spaceTail = null }
 
     /** The swiped word is still the last thing typed (with its space, if that is still there). */
     fun swipedIsLast(): Boolean {
@@ -339,6 +382,12 @@ class Composer(private val field: Field, private val clock: () -> Long) {
         return contextOf(before.substring(0, i))
     }
 
+    /**
+     * Whether [c] after a colon or semicolon makes an emoticon. Only closing marks may follow
+     * one glued to a word ("hi:)"); [loose], the marks that open one too, and its letters (":D").
+     */
+    private fun emoticon(c: Char, loose: Boolean) = c in EMOTE_CLOSE || (loose && c in EMOTE_MARKS)
+
     private fun endsWithWordAndSpace(): Boolean {
         val b = field.before(2)
         return b.length == 2 && b[1] == ' ' && (b[0].isLetterOrDigit() || b[0] in CLOSERS)
@@ -354,6 +403,13 @@ class Composer(private val field: Field, private val clock: () -> Long) {
         private const val SENTENCE = ".,?!:;،؟؛"
         /** Words a colon makes the start of a link or address, not the end of a phrase. */
         private val SCHEMES = setOf("http", "https", "ftp", "mailto", "tel", "sms", "file", "content", "geo", "intent")
+
+        /** What ends an emoticon and never starts a phrase after a colon: ":)", ":]", ":|". */
+        private const val EMOTE_CLOSE = ")]|\\"
+        /** What else carries an emoticon on: ":(", ":-)", ":'(", ":/", ":*", ":@", ":$", ":3". */
+        private const val EMOTE_MARKS = "([{}-'’/*@$#><^"
+        /** Faces' letters, a face only when nothing follows them: ":D", ":P", ":p", ":O", ":o", ":X", ":x", ":S", ":b", ":c", ":3". */
+        private const val EMOTE_LETTERS = "DPpOoXxSbc3"
 
         fun isSeparator(text: String) = text.length == 1 && text[0] in SEPARATORS
     }

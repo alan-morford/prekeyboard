@@ -215,6 +215,47 @@ class ComposerTest {
         type("3 ."); assertEquals("3 .", text.toString())
     }
 
+    @Test fun emoticonsAfterASpaceStayTogether() {
+        for (e in listOf(":)", ":(", ";)", ";-)", ":-(", ":'(", ":/", ":*", ":|", ":-P", ":'D")) {
+            text.setLength(0); composer.reset()
+            type("hi $e")
+            assertEquals("hi $e", text.toString())
+        }
+        // A face's letter could start a word: it's a face once what follows ends it.
+        for (e in listOf(":D", ":P", ":p", ":O", ":o", ":3", ";P", ";D")) {
+            text.setLength(0); composer.reset()
+            type("hi $e")
+            assertEquals("hi${e[0]} ${e[1]}", text.toString())
+            type(" there")
+            assertEquals("hi $e there", text.toString())
+        }
+        text.setLength(0); composer.reset()
+        type("hi :D!"); assertEquals("hi :D! ", text.toString())
+        text.setLength(0); composer.reset()
+        type("hi :P"); composer.beforeEnter(on); assertEquals("hi :P", text.toString())
+        text.setLength(0); composer.reset()
+        type("a :b"); assertEquals("a: b", text.toString())
+        type("ook"); assertEquals("a: book", text.toString())
+        text.setLength(0); composer.reset()
+        type("Note : Do it"); assertEquals("Note: Do it", text.toString())
+        // It goes on as typed, and the colon still snaps when a word follows.
+        text.setLength(0); composer.reset()
+        type("hi :) there"); assertEquals("hi :) there", text.toString())
+        text.setLength(0); composer.reset()
+        type("Note : see"); assertEquals("Note: see", text.toString())
+        // Glued to a word, only a closing mark: "hi:)", but "Note: (see)" and "Note: Do".
+        text.setLength(0); composer.reset()
+        type("hi:)"); assertEquals("hi:)", text.toString())
+        text.setLength(0); composer.reset()
+        type("Note:(see) Do: Done"); assertEquals("Note: (see) Do: Done", text.toString())
+        // After a symbol, any: ">:(".
+        text.setLength(0); composer.reset()
+        type("grr >:("); assertEquals("grr >:(", text.toString())
+        // A space typed on the colon's own is absorbed as before; then it's no emoticon.
+        text.setLength(0); composer.reset()
+        type("Note: (see)"); assertEquals("Note: (see)", text.toString())
+    }
+
     @Test fun pickingFromTheBar() {
         type("I like teh")
         assertEquals("teh", composer.currentWord())
